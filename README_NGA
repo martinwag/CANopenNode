@@ -1,0 +1,17 @@
+Branches von Github:
+github_master
+github_v3.0.X
+
+Branch von Github holen/updaten und auf Server uebertragen:
+
+git clone http://git.neuberger.local/Nova/lib/CANopenNode.git
+cd libmodbus
+git remote add github https://github.com/CANopenNode/CANopenNode.git
+git fetch github master:github_master --tags
+git push origin github_master --tags
+
+Der Branch steht dann mit der gewaehlten Bezeichnung auf dem Server zur Verfuegung.
+Zum Weiterarbeiten sollte ein neuer Clone vom Server gemacht werden, in diesem kann
+der Branch dann z.B. nach master gemerged werden.
+
+
