@@ -54,6 +54,9 @@
 #include <stddef.h>         /* for 'NULL' */
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
+#include <machine/endian.h>
+
+#include "can.h"
 
 
 /**
@@ -167,6 +170,7 @@
  * CO_SYNC_initCallback() function.
  * @{
  */
+    //todo
     #define CO_LOCK_CAN_SEND()  /**< Lock critical section in CO_CANsend() */
     #define CO_UNLOCK_CAN_SEND()/**< Unlock critical section in CO_CANsend() */
 
@@ -218,14 +222,13 @@ typedef enum{
 
 
 /**
- * CAN receive message structure as aligned in CAN module. It is different in
- * different microcontrollers. It usually contains other variables.
+ * CAN receive message structure as aligned in CAN module. This needs to be type 
+ * compatible to <struct can_frame>
  */
 typedef struct{
-    /** CAN identifier. It must be read through CO_CANrxMsg_readIdent() function. */
-    uint32_t            ident;
+    uint32_t            ident;          /**< CAN identifier */
     uint8_t             DLC ;           /**< Length of CAN message */
-    uint8_t             data[8];        /**< 8 data bytes */
+    uint8_t             data[8] __attribute__((aligned(8)));/**< 8 data bytes */
 }CO_CANrxMsg_t;
 
 
@@ -233,20 +236,21 @@ typedef struct{
  * Received message object
  */
 typedef struct{
-    uint16_t            ident;          /**< Standard CAN Identifier (bits 0..10) + RTR (bit 11) */
-    uint16_t            mask;           /**< Standard Identifier mask with same alignment as ident */
+    uint32_t            ident;          /**< Standard CAN Identifier (bits 0..10) + RTR (bit 11) */
+    uint32_t            mask;           /**< Standard Identifier mask with same alignment as ident */
     void               *object;         /**< From CO_CANrxBufferInit() */
     void              (*pFunct)(void *object, const CO_CANrxMsg_t *message);  /**< From CO_CANrxBufferInit() */
 }CO_CANrx_t;
 
 
 /**
- * Transmit message object.
+ * Transmit message object. The network message part of this type needs to be
+ * compatible to <struct can_frame>
  */
 typedef struct{
     uint32_t            ident;          /**< CAN identifier as aligned in CAN module */
     uint8_t             DLC ;           /**< Length of CAN message. (DLC may also be part of ident) */
-    uint8_t             data[8];        /**< 8 data bytes */
+    uint8_t             data[8] __attribute__((aligned(8)));/**< 8 data bytes */
     volatile bool_t     bufferFull;     /**< True if previous message is still in buffer */
     /** Synchronous PDO messages has this flag set. It prevents them to be sent outside the synchronous window */
     volatile bool_t     syncFlag;
@@ -268,17 +272,14 @@ typedef struct{
       * they won't be used. In this case will be *all* received CAN messages
       * processed by software. */
     volatile bool_t     useCANrxFilters;
-    /** If flag is true, then message in transmitt buffer is synchronous PDO
-      * message, which will be aborted, if CO_clearPendingSyncPDOs() function
-      * will be called by application. This may be necessary if Synchronous
-      * window time was expired. */
-    volatile bool_t     bufferInhibitFlag;
     /** Equal to 1, when the first transmitted message (bootup message) is in CAN TX buffers */
     volatile bool_t     firstCANtxMessage;
     /** Number of messages in transmit buffer, which are waiting to be copied to the CAN module */
-    volatile uint16_t   CANtxCount;
+    volatile uint32_t   CANtxCount;
     uint32_t            errOld;         /**< Previous state of CAN errors */
     void               *em;             /**< Emergency object */
+
+    can_t              *driver;         /**< neuberger can driver object */
 }CO_CANmodule_t;
 
 
@@ -288,7 +289,13 @@ typedef struct{
  * Depending on processor or compiler architecture, one of the two macros must
  * be defined: CO_LITTLE_ENDIAN or CO_BIG_ENDIAN. CANopen itself is little endian.
  */
-#define CO_LITTLE_ENDIAN
+#ifdef _BYTE_ORDER
+#if _BYTE_ORDER == _LITTLE_ENDIAN
+    #define CO_LITTLE_ENDIAN
+#else
+    #define CO_BIG_ENDIAN
+#endif
+#endif
 
 
 /**
@@ -452,13 +459,13 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule);
 
 
 /**
- * Receives and transmits CAN messages.
+ * Receives CAN messages.
  *
- * Function must be called directly from high priority CAN interrupt.
+ * Function must be called directly from high priority CAN Thread.
  *
  * @param CANmodule This object.
  */
-void CO_CANinterrupt(CO_CANmodule_t *CANmodule);
+void CO_CANrxWait(CO_CANmodule_t *CANmodule);
 
 
 /** @} */
