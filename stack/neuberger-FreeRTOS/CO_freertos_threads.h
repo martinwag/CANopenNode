@@ -1,7 +1,5 @@
 /**
- * CAN module object for generic microcontroller.
- *
- * This file is a template for other microcontrollers.
+ * CAN module object for neuberger. + FreeRTOS.
  *
  * @file        CO_freertos_threads.h
  * @ingroup     CO_driver
@@ -56,25 +54,24 @@ extern "C" {
  * that two threads are provided by the calling application.
  *
  * Like the CO socketCAN driver implementation, this driver uses the global CO
- * object. */
+ * object and has one local struct for thread variables. */
 
 /**
  * Initialize mainline thread.
  *
  * threadMain is non-realtime thread for CANopenNode processing. It is blocking.
- * It blocks for a maximum of 50 ms or less if necessary.
+ * It blocks for a maximum of <interval> ms or less if necessary.
  * It uses FreeRTOS vTaskDelayUntil for exact timings.
  * This thread processes CO_process() function from CANopen.c file.
  *
- * @param maxTime Pointer to variable, where longest interval will be written
- * [in milliseconds]. If NULL, calculations won't be made. //todo brauchen wir das?
+ * @param interval maximum interval in ms, recommended value: 50 ms
  */
-void threadMain_init(uint16_t *maxTime);
+extern void threadMain_init(uint16_t interval);
 
 /**
  * Cleanup mainline thread.
  */
-void threadMain_close(void);
+extern void threadMain_close(void);
 
 /**
  * Process mainline thread.
@@ -82,37 +79,30 @@ void threadMain_close(void);
  * This function must be called inside an infinite loop. It blocks until either
  * some event happens or a timer runs out.
  *
- * @param reset return value from CO_process() function.
+ * @param [out] reset return value from CO_process() function.
  */
-void threadMain_process(int fd, CO_NMT_reset_cmd_t *reset, uint16_t timer1ms);
+extern void threadMain_process(CO_NMT_reset_cmd_t *reset);
 
-/**
- * Signal function, which triggers mainline thread.
- *
- * It is used from some CANopenNode objects as callback.
- */
-void threadMain_cbSignal(void);
 
 /**
  * Initialize realtime thread.
  *
- * CANrx_threadTmr is realtime thread for CANopenNode processing. It is blocking
- * and is executing on CAN message receive or periodically in <intervalns>
- * intervals. Inside interval is processed CANopen SYNC message, RPDOs(inputs)
+ * CANrx_threadTmr is realtime thread for CANopenNode processing. It is blocking.
+ * It waits for either CAN message receive or <interval> ms timeout.
+ * Inside interval it processes CANopen SYNC message, RPDOs(inputs)
  * and TPDOs(outputs). Between inputs and outputs can also be executed some
  * realtime application code.
  * CANrx_threadTmr uses can driver poll functionality
  *
- * @param intervalns Interval of periodic timer in nanoseconds.
- * @param maxTime Pointer to variable, where longest interval will be written
- * [in milliseconds]. If NULL, calculations won't be made. //todo was macht die?
+ * @param interval Interval of periodic timer in ms, recommended value for
+ *                 fast response: 1ms
  */
-void CANrx_threadTmr_init(int fdEpoll, long intervalns, uint16_t *maxTime);
+extern void CANrx_threadTmr_init(uint16_t interval);
 
 /**
  * Cleanup realtime thread.
  */
-void CANrx_threadTmr_close(void);
+extern void CANrx_threadTmr_close(void);
 
 /**
  * Process realtime thread.
@@ -120,7 +110,7 @@ void CANrx_threadTmr_close(void);
  * This function must be called inside an infinite loop. It blocks until either
  * some event happens or a timer runs out.
  */
-void CANrx_threadTmr_process(void);
+extern void CANrx_threadTmr_process(void);
 
 /**
  * Disable CAN receive thread temporary.
@@ -128,7 +118,7 @@ void CANrx_threadTmr_process(void);
  * Function is called at SYNC message on CAN bus.
  * It disables CAN receive thread until RPDOs are processed.
  */
-void CANrx_lockCbSync(bool_t syncReceived); //todo brauchen wir das?
+extern void CANrx_lockCbSync(bool_t syncReceived); //todo brauchen wir das?
 
 #ifdef __cplusplus
 }

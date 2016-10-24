@@ -1,12 +1,10 @@
 /**
- * CAN module object for generic microcontroller.
- *
- * This file is a template for other microcontrollers.
+ * CAN module object for neuberger. + FreeRTOS.
  *
  * @file        CO_driver.h
  * @ingroup     CO_driver
- * @author      Janez Paternoster
- * @copyright   2004 - 2015 Janez Paternoster
+ * @author      Janez Paternoster, Martin Wagner
+ * @copyright   2004 - 2015 Janez Paternoster, 2016 Neuberger Gebaeudeautomation GmbH
  *
  * This file is part of CANopenNode, an opensource CANopen Stack.
  * Project home page is <https://github.com/CANopenNode/CANopenNode>.
@@ -464,8 +462,11 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule);
  * Function must be called directly from high priority CAN Thread.
  *
  * @param CANmodule This object.
+ * @param timeout max wait time in ms
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT or
+ * CO_ERROR_TIMEOUT
  */
-void CO_CANrxWait(CO_CANmodule_t *CANmodule);
+CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout);
 
 
 /** @} */

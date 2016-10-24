@@ -1,4 +1,4 @@
-/*
+/**
  * CAN module object for neuberger. + FreeRTOS.
  *
  * @file        CO_driver.c
@@ -284,7 +284,7 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule)
 }
 
 /******************************************************************************/
-void CO_CANrxWait(CO_CANmodule_t *CANmodule)
+CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
 {
   struct can_frame frame;
   can_state_t state;
@@ -294,24 +294,32 @@ void CO_CANrxWait(CO_CANmodule_t *CANmodule)
   bool_t matched = false;
 
   if (CANmodule == NULL) {
-    return;
+    return CO_ERROR_ILLEGAL_ARGUMENT;
   }
 
   /* Wait for message */
+  state = can_poll(CANmodule->driver, timeout);
+  if (state == CAN_ERR_TIMEOUT) {
+    return CO_ERROR_TIMEOUT;
+  } else if (state != CAN_OK) {
+    //todo fehler behandeln?
+    return CO_ERROR_ILLEGAL_ARGUMENT;
+  }
+
   state = can_read(CANmodule->driver, &frame);
   if (state != CAN_OK) {
     //todo fehler behandeln?
-    return;
+    return CO_ERROR_ILLEGAL_ARGUMENT;
   }
 
   if ((frame.can_dlc & CAN_EFF_MASK) != 0) {
     /* Drop extended Id Msg */
-    return;
+    return CO_ERROR_ILLEGAL_ARGUMENT;
   }
 
   if ((frame.can_id & CAN_ERR_FLAG) != 0) {
     //todo was mit einem Errorframe machen?
-    return;
+    return CO_ERROR_ILLEGAL_ARGUMENT;
   }
 
   rx_id = frame.can_id & CAN_SFF_MASK;
@@ -343,6 +351,7 @@ void CO_CANrxWait(CO_CANmodule_t *CANmodule)
       buffer->pFunct(buffer->object, (CO_CANrxMsg_t*) &frame);
     }
   }
+  return CO_ERROR_NO;
 }
 
 
