@@ -55,6 +55,9 @@
 
 static const char CAN_ERR_MSG[] = "CAN err %d 0x%x";
 
+SemaphoreHandle_t CO_EMCY_mtx = NULL;
+SemaphoreHandle_t CO_OD_mtx = NULL;
+
 /******************************************************************************/
 void CO_CANsetConfigurationMode(int32_t CANbaseAddress)
 {
@@ -108,6 +111,18 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
   }
 
   /* First time only configuration */
+  if (CO_EMCY_mtx == NULL) {
+    CO_EMCY_mtx = xSemaphoreCreateMutex();
+    if (CO_EMCY_mtx == NULL) {
+      return CO_ERROR_OUT_OF_MEMORY;
+    }
+  }
+  if (CO_OD_mtx == NULL) {
+    CO_OD_mtx = xSemaphoreCreateMutex();
+    if (CO_OD_mtx == NULL) {
+      return CO_ERROR_OUT_OF_MEMORY;
+    }
+  }
   if (CANmodule->driver == NULL) {
 
     /* Configure CAN module */
@@ -329,7 +344,9 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
   }
 
   if ((frame.can_id & CAN_ERR_FLAG) != 0) {
-    CO_CANverifyErrors(CANmodule); //todo bekommt errormsg nicht... wie wird das im socketcantreiber gemacht?
+    //todo wie errorframe weitergeben?
+    log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, frame.can_id);
+    return CO_ERROR_NO;
   }
 
   rx_id = frame.can_id & CAN_SFF_MASK;

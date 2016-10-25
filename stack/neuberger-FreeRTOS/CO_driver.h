@@ -54,6 +54,9 @@
 #include <stdbool.h>        /* for 'true', 'false' */
 #include <machine/endian.h>
 
+#include "FreeRTOS.h"
+#include "semphr.h"
+
 #include "can.h"
 
 
@@ -168,15 +171,20 @@
  * CO_SYNC_initCallback() function.
  * @{
  */
-    //todo
-    #define CO_LOCK_CAN_SEND()  /**< Lock critical section in CO_CANsend() */
-    #define CO_UNLOCK_CAN_SEND()/**< Unlock critical section in CO_CANsend() */
+#define CO_LOCK_CAN_SEND()      /* not needed */
+#define CO_UNLOCK_CAN_SEND()
 
-    #define CO_LOCK_EMCY()      /**< Lock critical section in CO_errorReport() or CO_errorReset() */
-    #define CO_UNLOCK_EMCY()    /**< Unlock critical section in CO_errorReport() or CO_errorReset() */
+extern SemaphoreHandle_t CO_EMCY_mtx;
+/** Lock critical section in CO_errorReport() or CO_errorReset() */
+static inline void CO_LOCK_EMCY(void) { (void)xSemaphoreTake(CO_EMCY_mtx, portMAX_DELAY); }
+/** Unlock critical section in CO_errorReport() or CO_errorReset() */
+static inline void CO_UNLOCK_EMCY(void) { (void)xSemaphoreGive(CO_EMCY_mtx); }
 
-    #define CO_LOCK_OD()        /**< Lock critical section when accessing Object Dictionary */
-    #define CO_UNLOCK_OD()      /**< Unock critical section when accessing Object Dictionary */
+extern SemaphoreHandle_t CO_OD_mtx;
+/** Lock critical section when accessing Object Dictionary */
+static inline void CO_LOCK_OD(void) { (void)xSemaphoreTake(CO_OD_mtx, portMAX_DELAY); }
+/** Unock critical section when accessing Object Dictionary */
+static inline void CO_UNLOCK_OD(void) { (void)xSemaphoreGive(CO_OD_mtx); }
 /** @} */
 
 /**
