@@ -54,14 +54,13 @@ extern "C" {
  * that two threads are provided by the calling application.
  *
  * Like the CO socketCAN driver implementation, this driver uses the global CO
- * object and has one local struct for thread variables. */
+ * object and has one thread-local struct for variables. */
 
 /**
  * Initialize mainline thread.
  *
  * threadMain is non-realtime thread for CANopenNode processing. It is blocking.
  * It blocks for a maximum of <interval> ms or less if necessary.
- * It uses FreeRTOS vTaskDelayUntil for exact timings.
  * This thread processes CO_process() function from CANopen.c file.
  *
  * @param interval maximum interval in ms, recommended value: 50 ms
@@ -90,12 +89,10 @@ extern void threadMain_process(CO_NMT_reset_cmd_t *reset);
  * CANrx_threadTmr is realtime thread for CANopenNode processing. It is blocking.
  * It waits for either CAN message receive or <interval> ms timeout.
  * Inside interval it processes CANopen SYNC message, RPDOs(inputs)
- * and TPDOs(outputs). Between inputs and outputs can also be executed some
- * realtime application code.
- * CANrx_threadTmr uses can driver poll functionality
+ * and TPDOs(outputs).
  *
  * @param interval Interval of periodic timer in ms, recommended value for
- *                 fast response: 1ms
+ *                 realtime response: 1ms
  */
 extern void CANrx_threadTmr_init(uint16_t interval);
 

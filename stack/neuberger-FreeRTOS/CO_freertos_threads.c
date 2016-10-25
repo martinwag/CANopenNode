@@ -52,16 +52,16 @@
 /* Mainline thread (threadMain) ***************************************************/
 static struct
 {
-  TickType_t last_executed;  /* time value CO_process() was called last time */
-  uint16_t interval_next;    /* calculated next timer interval */
+  TickType_t interval_last;  /* time value CO_process() was called last time */
+  uint16_t interval_time;    /* calculated next timer interval */
   uint16_t interval;         /* max timer interval */
 } threadMain;
 
 void threadMain_init(uint16_t interval)
 {
   threadMain.interval = interval;
-  threadMain.interval_next = 1; /* do not block the first time. 0 is not allowed by the OS */
-  threadMain.last_executed = xTaskGetTickCount();
+  threadMain.interval_time = 1; /* do not block the first time. 0 is not allowed by the OS */
+  threadMain.interval_last = xTaskGetTickCount();
 }
 
 void threadMain_close(void)
@@ -75,32 +75,30 @@ void threadMain_process(CO_NMT_reset_cmd_t *reset)
   uint16_t next;
   TickType_t now;
 
-  now = threadMain.last_executed;
-  vTaskDelayUntil(&now, pdMS_TO_TICKS(threadMain.interval_next));
+  now = threadMain.interval_last;
+  vTaskDelayUntil(&now, pdMS_TO_TICKS(threadMain.interval_time)); /* calculates "now" */
 
-  diff = (uint16_t)(now - threadMain.last_executed);
+  diff = (uint16_t)(now - threadMain.interval_last);
 
   next = threadMain.interval;
   do {
     *reset = CO_process(CO, diff, &next);
   } while ((*reset == CO_RESET_NOT) && (next == 0));
 
-  threadMain.interval_next = next;
-  threadMain.last_executed = now;
+  threadMain.interval_time = next;
+  threadMain.interval_last = now;
 }
 
 /* Realtime thread (threadRT) *****************************************************/
 static struct {
-  TickType_t last_executed;  /* time value CO_process() was called last time */
-  uint16_t interval_next;    /* calculated next timer interval */
-  uint16_t interval;         /* max timer interval */
+  int16_t interval;          /* max timer interval */
+  TickType_t interval_time;  /* time value CO_process() was called last time */
 } threadRT;
 
 void CANrx_threadTmr_init(uint16_t interval)
 {
   threadRT.interval = interval;
-  threadRT.last_executed = xTaskGetTickCount();
-  threadRT.interval_next = threadRT.interval;
+  threadRT.interval_time = xTaskGetTickCount(); /* Processing is due now */
 }
 
 void CANrx_threadTmr_close(void)
@@ -116,9 +114,13 @@ void CANrx_threadTmr_process(void)
   bool_t syncWas;
   CO_ReturnError_t result;
 
+  /* This function waits for either can msg rx or interval timeout. Can driver
+   * only takes timeout in ms but not timestamp, so we have to calculate that.
+   * Using timeouts introduces some jitter in execution compared to timestamps. */
+
   /* Calculate delay time for rxWait() */
   now = xTaskGetTickCount();
-  timeout = threadRT.interval_next - (now - threadRT.last_executed);
+  timeout = threadRT.interval - (int16_t)(now - threadRT.interval_time);
   if (timeout < 0) {
     timeout = 0;
   }
@@ -126,13 +128,7 @@ void CANrx_threadTmr_process(void)
   result = CO_CANrxWait(CO->CANmodule[0], timeout);
   switch (result) {
     case CO_ERROR_NO:
-      /* Calculate remaining delay time */
-      now = xTaskGetTickCount(); //todo ungenau, geht mit freertos aber scheinbar nicht besser
-      threadRT.interval_next = threadRT.interval - (now - threadRT.last_executed);
-      threadRT.last_executed = now;
-
       /* Message has already been processed inside rxWait() */
-
       break;
     case CO_ERROR_TIMEOUT:
       if(CO->CANmodule[0]->CANnormal == true) {
@@ -144,18 +140,11 @@ void CANrx_threadTmr_process(void)
 
         /* Write outputs */
         CO_process_TPDO(CO, syncWas, us_interval);
-
-        /* verify timer overflow */
-        if(0) {
-    //todo      CO_errorReport(CO->em, CO_EM_ISR_TIMER_OVERFLOW, CO_EMC_SOFTWARE_INTERNAL, 0U);
-        }
       }
 
-      /* Calculate time of execution. This ist done by adding interval time to
-       * the last execution time */
-      //todo wie geht das mit der Ungenauigkeit aus dem Nachricht Empfangen Teil zusammen? Addiert sich der Fehler auf oder wird er kompensiert?
-      threadRT.last_executed = threadRT.last_executed + threadRT.interval;
-      threadRT.interval_next = threadRT.interval;
+      /* Calculate time of next execution. This ist done by adding interval to
+       * now */
+      threadRT.interval_time = threadRT.interval_time + threadRT.interval;
       break;
     default:
       //todo error handling
