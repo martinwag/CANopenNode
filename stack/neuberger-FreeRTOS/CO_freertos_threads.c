@@ -127,9 +127,6 @@ void CANrx_threadTmr_process(void)
 
   result = CO_CANrxWait(CO->CANmodule[0], timeout);
   switch (result) {
-    case CO_ERROR_NO:
-      /* Message has already been processed inside rxWait() */
-      break;
     case CO_ERROR_TIMEOUT:
       if(CO->CANmodule[0]->CANnormal == true) {
 
@@ -146,8 +143,9 @@ void CANrx_threadTmr_process(void)
        * now */
       threadRT.interval_time = threadRT.interval_time + threadRT.interval;
       break;
+    case CO_ERROR_NO:
     default:
-      //todo error handling
+      /* Messages/Errors are processed inside rxWait() */
       break;
   }
 }

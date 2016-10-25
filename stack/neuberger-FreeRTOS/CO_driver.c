@@ -49,7 +49,11 @@
 #include "CO_Emergency.h"
 
 #include "can.h"
+#include "can_error.h"
 #include "driver_defs.h"
+#include "log.h"
+
+static const char CAN_ERR_MSG[] = "CAN err %d 0x%x";
 
 /******************************************************************************/
 void CO_CANsetConfigurationMode(int32_t CANbaseAddress)
@@ -62,6 +66,7 @@ void CO_CANsetNormalMode(CO_CANmodule_t *CANmodule)
 {
   /* Put CAN module in normal mode */
   if (CANmodule != NULL) {
+    can_flush(CANmodule->driver);
     CANmodule->CANnormal = true;
   }
 }
@@ -76,7 +81,7 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
   can_state_t state;
 
   /* verify arguments */
-  if (CANmodule == NULL || rxArray == NULL || txArray == NULL) {
+  if ((CANmodule == NULL) || (rxArray == NULL) || (txArray == NULL)) {
     return CO_ERROR_ILLEGAL_ARGUMENT;
   }
 
@@ -87,7 +92,8 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
   CANmodule->txArray = txArray;
   CANmodule->txSize = txSize;
   CANmodule->CANnormal = false;
-  //todo CANmodule->useCANrxFilters = (rxSize <= 32U) ? true : false;/* microcontroller dependent */
+  //todo example decides usage of hw/sw filters depending if there are enough hw filters
+  CANmodule->useCANrxFilters = false;
   CANmodule->firstCANtxMessage = true;
   CANmodule->CANtxCount = 0U;
   CANmodule->errOld = 0U;
@@ -105,24 +111,25 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
   if (CANmodule->driver == NULL) {
 
     /* Configure CAN module */
-    CANmodule->driver = can_create(16, 16); //todo queusize woanders festlegen
+    CANmodule->driver = can_create(CO_QUEUE_RX, CO_QUEUE_TX);
     if (CANmodule->driver == NULL) {
-      return CO_ERROR_ILLEGAL_ARGUMENT;
+      return CO_ERROR_OUT_OF_MEMORY;
     }
 
     state = can_init(CANmodule->driver, DRIVER_HW_TEMPLATE, CAN_MODULE_A);
     if (state != CAN_OK) {
+      log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
       return CO_ERROR_ILLEGAL_ARGUMENT;
     }
 
+    /* CANopenNode supports tx non-block by using the bufferFull flag, however
+     * we do not take advantage of this. When the queue is full, all following
+     * messages are dropped */
     tmp = 0;
-    (void) can_ioctl(CANmodule->driver, CAN_SET_ERROR, &tmp); //todo kein Error Reporting? geht das irgendwie mit dem CO_driver?
-    /* CANopenNode assumes tx non-block */ //todo wenn wir das auch so wollen, m"ussen wir uns um das rausschreiben der Objekte k"ummern wenn Queue voll war
-    tmp = 0;
-    (void) can_ioctl(CANmodule->driver, CAN_SET_TX_MODE, &tmp);
+    (void)can_ioctl(CANmodule->driver, CAN_SET_TX_MODE, &tmp);
   }
 
-  /* Configure CAN module hardware filters */
+  /* Configure CAN module hardware filters todo */
   if (CANmodule->useCANrxFilters) {
     /* CAN module filters are used, they will be configured with */
     /* CO_CANrxBufferInit() functions, called by separate CANopen */
@@ -140,8 +147,7 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
 /******************************************************************************/
 void CO_CANmodule_disable(CO_CANmodule_t *CANmodule)
 {
-  /* turn off the module */
-//todo brauchen wir das im Modul??
+  /* keine weiteren Aktionen */
 }
 
 /******************************************************************************/
@@ -158,10 +164,10 @@ CO_ReturnError_t CO_CANrxBufferInit(CO_CANmodule_t *CANmodule, uint16_t index,
     buffer->object = object;
     buffer->pFunct = pFunct;
 
-    /* CAN identifier and CAN mask, bit aligned with CAN module. Different on different microcontrollers. */
+    /* CAN identifier and CAN mask, bit aligned with CAN module. */
     buffer->ident = ident & CAN_SFF_MASK;
     if (rtr) {
-      buffer->ident |= CAN_RTR_FLAG;
+      buffer->ident = buffer->ident | CAN_RTR_FLAG;
     }
     buffer->mask = (mask & CAN_SFF_MASK) | CAN_EFF_FLAG | CAN_RTR_FLAG;
 
@@ -206,8 +212,9 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
   if ((CANmodule != NULL) && (buffer != NULL)) {
     state = can_write(CANmodule->driver, (struct can_frame*) buffer);
     if (state != CAN_OK) {
-      //todo log?
-      //CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, n);
+      log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
+      CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW,
+                     CO_EMC_CAN_OVERRUN, state);
       return CO_ERROR_TX_OVERFLOW;
     }
   } else {
@@ -302,24 +309,27 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
   if (state == CAN_ERR_TIMEOUT) {
     return CO_ERROR_TIMEOUT;
   } else if (state != CAN_OK) {
-    //todo fehler behandeln?
-    return CO_ERROR_ILLEGAL_ARGUMENT;
+    log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
+    CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_RXMSG_OVERFLOW,
+                   CO_EMC_CAN_OVERRUN, state);
+    return CO_ERROR_RX_OVERFLOW;
   }
 
   state = can_read(CANmodule->driver, &frame);
   if (state != CAN_OK) {
-    //todo fehler behandeln?
-    return CO_ERROR_ILLEGAL_ARGUMENT;
+    log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
+    CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_RXMSG_OVERFLOW,
+                   CO_EMC_CAN_OVERRUN, state);
+    return CO_ERROR_RX_OVERFLOW;
   }
 
-  if ((frame.can_dlc & CAN_EFF_MASK) != 0) {
+  if ((frame.can_dlc & CAN_EFF_FLAG) != 0) {
     /* Drop extended Id Msg */
-    return CO_ERROR_ILLEGAL_ARGUMENT;
+    return CO_ERROR_NO;
   }
 
   if ((frame.can_id & CAN_ERR_FLAG) != 0) {
-    //todo was mit einem Errorframe machen?
-    return CO_ERROR_ILLEGAL_ARGUMENT;
+    CO_CANverifyErrors(CANmodule); //todo bekommt errormsg nicht... wie wird das im socketcantreiber gemacht?
   }
 
   rx_id = frame.can_id & CAN_SFF_MASK;

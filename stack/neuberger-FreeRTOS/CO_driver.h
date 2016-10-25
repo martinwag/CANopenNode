@@ -179,6 +179,13 @@
     #define CO_UNLOCK_OD()      /**< Unock critical section when accessing Object Dictionary */
 /** @} */
 
+/**
+ * @name can driver queue sizes
+ * @{
+ */
+#define CO_QUEUE_RX 16  /**< Receive queue message count in driver */
+#define CO_QUEUE_TX 16  /**< Transmit queue message count in driver */
+/** @} */
 
 /**
  * @defgroup CO_dataTypes Data types
