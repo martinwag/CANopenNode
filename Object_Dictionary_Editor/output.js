@@ -1296,45 +1296,63 @@ function extractLabels(element){
 
 function generateCO_OD_H(){
 	var text = "ODH"+
-		"/*******************************************************************************\n"+
-		"\n"+
-		"   File: CO"+ODfileNameReference+"_OD.h\n"+
-		"   CANopen Object Dictionary.\n"+
-		"\n"+
-		"   Copyright (C) 2004-2008 Janez Paternoster\n"+
-		"\n"+
-		"   License: GNU Lesser General Public License (LGPL).\n"+
-		"\n"+
-		"   <http://canopennode.sourceforge.net>\n"+
-		"\n"+
-		"   (For more information see <CO_SDO.h>.)\n"+
-		"*/\n"+
-		"/*\n"+
-		"   This program is free software: you can redistribute it and/or modify\n"+
-		"   it under the terms of the GNU Lesser General Public License as published by\n"+
-		"   the Free Software Foundation, either version 2.1 of the License, or\n"+
-		"   (at your option) any later version.\n"+
-		"\n"+
-		"   This program is distributed in the hope that it will be useful,\n"+
-		"   but WITHOUT ANY WARRANTY; without even the implied warranty of\n"+
-		"   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n"+
-		"   GNU Lesser General Public License for more details.\n"+
-		"\n"+
-		"   You should have received a copy of the GNU Lesser General Public License\n"+
-		"   along with this program.  If not, see <http://www.gnu.org/licenses/>.\n"+
-		"\n"+
-		"\n"+
-		"   Author: Janez Paternoster\n"+
-		"\n"+
-		"\n"+
-		"   This file was automatically generated with CANopenNode Object\n"+
-		"   Dictionary Editor. DON'T EDIT THIS FILE MANUALLY !!!!\n"+
-		"\n"+
-		"*******************************************************************************/\n"+
+    "/*\n"+
+    "* CANopen Object Dictionary.\n"+
+    "*\n"+
+    "* This file was automatically generated with CANopenNode Object\n"+
+    "* Dictionary Editor. DON'T EDIT THIS FILE MANUALLY !!!!\n"+
+    "* Object Dictionary Editor is currently an older, but functional web\n"+
+    "* application. For more info see See 'Object_Dictionary_Editor/about.html' in\n"+
+    "* <http://sourceforge.net/p/canopennode/code_complete/ci/master/tree/>\n"+
+    "* For more information on CANopen Object Dictionary see <CO_SDO.h>.\n"+
+    "*\n"+
+    "* @file        CO_OD.h\n"+
+    "* @author      Janez Paternoster\n"+
+    "* @copyright   2010 - 2016 Janez Paternoster\n"+
+    "*\n"+
+    "* This file is part of CANopenNode, an opensource CANopen Stack.\n"+
+    "* Project home page is <https://github.com/CANopenNode/CANopenNode>.\n"+
+    "* For more information on CANopen see <http://www.can-cia.org/>.\n"+
+    "*\n"+
+    "* CANopenNode is free and open source software: you can redistribute\n"+
+    "* it and/or modify it under the terms of the GNU General Public License\n"+
+    "* as published by the Free Software Foundation, either version 2 of the\n"+
+    "* License, or (at your option) any later version.\n"+
+    "*\n"+
+    "* This program is distributed in the hope that it will be useful,\n"+
+    "* but WITHOUT ANY WARRANTY; without even the implied warranty of\n"+
+    "* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the\n"+
+    "* GNU General Public License for more details.\n"+
+    "*\n"+
+    "* You should have received a copy of the GNU General Public License\n"+
+    "* along with this program. If not, see <http://www.gnu.org/licenses/>.\n"+
+    "*\n"+
+    "* Following clarification and special exception to the GNU General Public\n"+
+    "* License is included to the distribution terms of CANopenNode:\n"+
+    "*\n"+
+    "* Linking this library statically or dynamically with other modules is\n"+
+    "* making a combined work based on this library. Thus, the terms and\n"+
+    "* conditions of the GNU General Public License cover the whole combination.\n"+
+    "*\n"+
+    "* As a special exception, the copyright holders of this library give\n"+
+    "* you permission to link this library with independent modules to\n"+
+    "* produce an executable, regardless of the license terms of these\n"+
+    "* independent modules, and to copy and distribute the resulting\n"+
+    "* executable under terms of your choice, provided that you also meet,\n"+
+    "* for each linked independent module, the terms and conditions of the\n"+
+    "* license of that module. An independent module is a module which is\n"+
+    "* not derived from or based on this library. If you modify this\n"+
+    "* library, you may extend this exception to your version of the\n"+
+    "* library, but you are not obliged to do so. If you do not wish\n"+
+    "* to do so, delete this exception statement from your version.\n"+
+    "*/\n"+
 		"\n"+
 		"#ifndef CO_OD"+ODfileNameReference+"_H\n"+
 		"#define CO_OD"+ODfileNameReference+"_H\n"+
 		"\n"+
+    "#ifdef __cplusplus\n"+
+    "extern \"C\" {\n"+
+    "#endif\n"+
 		"\n"+
 		"/*******************************************************************************\n"+
 		"   CANopen DATA DYPES\n"+
@@ -1435,6 +1453,10 @@ function generateCO_OD_H(){
 		"*******************************************************************************/\n"+
 		CO_OD_H_aliases.join("\n")+"\n"+
 		"\n"+
+    "#ifdef __cplusplus\n"+
+    "}\n"+
+    "#endif\n"+
+    "\n"+
 		"#endif\n";
 
 		g_openerWindow.source.postMessage(text, "*");
@@ -1442,41 +1464,56 @@ function generateCO_OD_H(){
 
 function generateCO_OD_C(){
 	var text = "ODC"+
-		"/*******************************************************************************\n"+
-		"\n"+
-		"   File - CO"+ODfileNameReference+"_OD.c\n"+
-		"   CANopen Object Dictionary.\n"+
-		"\n"+
-		"   Copyright (C) 2004-2008 Janez Paternoster\n"+
-		"\n"+
-		"   License: GNU Lesser General Public License (LGPL).\n"+
-		"\n"+
-		"   <http://canopennode.sourceforge.net>\n"+
-		"\n"+
-		"   (For more information see <CO_SDO.h>.)\n"+
-		"*/\n"+
-		"/*\n"+
-		"   This program is free software: you can redistribute it and/or modify\n"+
-		"   it under the terms of the GNU Lesser General Public License as published by\n"+
-		"   the Free Software Foundation, either version 2.1 of the License, or\n"+
-		"   (at your option) any later version.\n"+
-		"\n"+
-		"   This program is distributed in the hope that it will be useful,\n"+
-		"   but WITHOUT ANY WARRANTY; without even the implied warranty of\n"+
-		"   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n"+
-		"   GNU Lesser General Public License for more details.\n"+
-		"\n"+
-		"   You should have received a copy of the GNU Lesser General Public License\n"+
-		"   along with this program.  If not, see <http://www.gnu.org/licenses/>.\n"+
-		"\n"+
-		"\n"+
-		"   Author: Janez Paternoster\n"+
-		"\n"+
-		"\n"+
-		"   This file was automatically generated with CANopenNode Object\n"+
-		"   Dictionary Editor. DON'T EDIT THIS FILE MANUALLY !!!!\n"+
-		"\n"+
-		"*******************************************************************************/\n"+
+    "/*\n"+
+    "* CANopen Object Dictionary.\n"+
+    "*\n"+
+    "* This file was automatically generated with CANopenNode Object\n"+
+    "* Dictionary Editor. DON'T EDIT THIS FILE MANUALLY !!!!\n"+
+    "* Object Dictionary Editor is currently an older, but functional web\n"+
+    "* application. For more info see See 'Object_Dictionary_Editor/about.html' in\n"+
+    "* <http://sourceforge.net/p/canopennode/code_complete/ci/master/tree/>\n"+
+    "* For more information on CANopen Object Dictionary see <CO_SDO.h>.\n"+
+    "*\n"+
+    "* @file        CO_OD.c\n"+
+    "* @author      Janez Paternoster\n"+
+    "* @copyright   2010 - 2016 Janez Paternoster\n"+
+    "*\n"+
+    "* This file is part of CANopenNode, an opensource CANopen Stack.\n"+
+    "* Project home page is <https://github.com/CANopenNode/CANopenNode>.\n"+
+    "* For more information on CANopen see <http://www.can-cia.org/>.\n"+
+    "*\n"+
+    "* CANopenNode is free and open source software: you can redistribute\n"+
+    "* it and/or modify it under the terms of the GNU General Public License\n"+
+    "* as published by the Free Software Foundation, either version 2 of the\n"+
+    "* License, or (at your option) any later version.\n"+
+    "*\n"+
+    "* This program is distributed in the hope that it will be useful,\n"+
+    "* but WITHOUT ANY WARRANTY; without even the implied warranty of\n"+
+    "* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the\n"+
+    "* GNU General Public License for more details.\n"+
+    "*\n"+
+    "* You should have received a copy of the GNU General Public License\n"+
+    "* along with this program. If not, see <http://www.gnu.org/licenses/>.\n"+
+    "*\n"+
+    "* Following clarification and special exception to the GNU General Public\n"+
+    "* License is included to the distribution terms of CANopenNode:\n"+
+    "*\n"+
+    "* Linking this library statically or dynamically with other modules is\n"+
+    "* making a combined work based on this library. Thus, the terms and\n"+
+    "* conditions of the GNU General Public License cover the whole combination.\n"+
+    "*\n"+
+    "* As a special exception, the copyright holders of this library give\n"+
+    "* you permission to link this library with independent modules to\n"+
+    "* produce an executable, regardless of the license terms of these\n"+
+    "* independent modules, and to copy and distribute the resulting\n"+
+    "* executable under terms of your choice, provided that you also meet,\n"+
+    "* for each linked independent module, the terms and conditions of the\n"+
+    "* license of that module. An independent module is a module which is\n"+
+    "* not derived from or based on this library. If you modify this\n"+
+    "* library, you may extend this exception to your version of the\n"+
+    "* library, but you are not obliged to do so. If you do not wish\n"+
+    "* to do so, delete this exception statement from your version.\n"+
+    "*/\n"+
 		"\n"+
 		"\n"+
 		"#include \"CO_driver.h\"\n"+
