@@ -43,20 +43,14 @@
  * to do so, delete this exception statement from your version.
  */
 
+#include "CO_driver.h"
+
 #include <string.h>
 
-#include "CO_driver.h"
 #include "CO_Emergency.h"
 
 #include "can.h"
-#include "can_error.h"
 #include "driver_defs.h"
-#include "log.h"
-
-static const char CAN_ERR_MSG[] = "CAN err %d 0x%x";
-
-SemaphoreHandle_t CO_EMCY_mtx = NULL;
-SemaphoreHandle_t CO_OD_mtx = NULL;
 
 /******************************************************************************/
 void CO_CANsetConfigurationMode(int32_t CANbaseAddress)
@@ -69,7 +63,7 @@ void CO_CANsetNormalMode(CO_CANmodule_t *CANmodule)
 {
   /* Put CAN module in normal mode */
   if (CANmodule != NULL) {
-    can_flush(CANmodule->driver);
+    can_flush(&CANmodule->driver.can);
     CANmodule->CANnormal = true;
   }
 }
@@ -80,7 +74,6 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
     CO_CANtx_t txArray[], uint16_t txSize, uint16_t CANbitRate)
 {
   uint16_t i;
-  uint32_t tmp;
   can_state_t state;
 
   /* verify arguments */
@@ -111,37 +104,14 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
   }
 
   /* First time only configuration */
-  if (CO_EMCY_mtx == NULL) {
-    CO_EMCY_mtx = xSemaphoreCreateMutex();
-    if (CO_EMCY_mtx == NULL) {
-      return CO_ERROR_OUT_OF_MEMORY;
-    }
-  }
-  if (CO_OD_mtx == NULL) {
-    CO_OD_mtx = xSemaphoreCreateMutex();
-    if (CO_OD_mtx == NULL) {
-      return CO_ERROR_OUT_OF_MEMORY;
-    }
-  }
-  if (CANmodule->driver == NULL) {
 
-    /* Configure CAN module */
-    CANmodule->driver = can_create(CO_QUEUE_RX, CO_QUEUE_TX);
-    if (CANmodule->driver == NULL) {
-      return CO_ERROR_OUT_OF_MEMORY;
-    }
-
-    state = can_init(CANmodule->driver, DRIVER_HW_TEMPLATE, CAN_MODULE_A);
+  /* Configure CAN module */
+  if (CANmodule->driver.initialized == false) {
+    state = can_init(&CANmodule->driver.can, DRIVER_HW_TEMPLATE, CAN_MODULE_A); //todo parameter verwenden
     if (state != CAN_OK) {
-      log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
       return CO_ERROR_ILLEGAL_ARGUMENT;
     }
-
-    /* CANopenNode supports tx non-block by using the bufferFull flag, however
-     * we do not take advantage of this. When the queue is full, all following
-     * messages are dropped */
-    tmp = 0;
-    (void)can_ioctl(CANmodule->driver, CAN_SET_TX_MODE, &tmp);
+    CANmodule->driver.initialized = true;
   }
 
   /* Configure CAN module hardware filters todo */
@@ -225,9 +195,8 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
   can_state_t state;
 
   if ((CANmodule != NULL) && (buffer != NULL)) {
-    state = can_write(CANmodule->driver, (struct can_frame*) buffer);
+    state = can_write(&CANmodule->driver.can, (struct can_frame*) buffer);
     if (state != CAN_OK) {
-      log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
       CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW,
                      CO_EMC_CAN_OVERRUN, state);
       return CO_ERROR_TX_OVERFLOW;
@@ -249,60 +218,7 @@ void CO_CANclearPendingSyncPDOs(CO_CANmodule_t *CANmodule)
 /******************************************************************************/
 void CO_CANverifyErrors(CO_CANmodule_t *CANmodule)
 {
-//    uint16_t rxErrors, txErrors, overflow;
-//    CO_EM_t* em = (CO_EM_t*)CANmodule->em;
-//    uint32_t err;
-//
-//    /* get error counters from module. Id possible, function may use different way to
-//     * determine errors. */
-//    rxErrors = CANmodule->txSize;
-//    txErrors = CANmodule->txSize;
-//    overflow = CANmodule->txSize;
-//
-//    err = ((uint32_t)txErrors << 16) | ((uint32_t)rxErrors << 8) | overflow;
-//
-//    if(CANmodule->errOld != err){
-//        CANmodule->errOld = err;
-//
-//        if(txErrors >= 256U){                               /* bus off */
-//            CO_errorReport(em, CO_EM_CAN_TX_BUS_OFF, CO_EMC_BUS_OFF_RECOVERED, err);
-//        }
-//        else{                                               /* not bus off */
-//            CO_errorReset(em, CO_EM_CAN_TX_BUS_OFF, err);
-//
-//            if((rxErrors >= 96U) || (txErrors >= 96U)){     /* bus warning */
-//                CO_errorReport(em, CO_EM_CAN_BUS_WARNING, CO_EMC_NO_ERROR, err);
-//            }
-//
-//            if(rxErrors >= 128U){                           /* RX bus passive */
-//                CO_errorReport(em, CO_EM_CAN_RX_BUS_PASSIVE, CO_EMC_CAN_PASSIVE, err);
-//            }
-//            else{
-//                CO_errorReset(em, CO_EM_CAN_RX_BUS_PASSIVE, err);
-//            }
-//
-//            if(txErrors >= 128U){                           /* TX bus passive */
-//                if(!CANmodule->firstCANtxMessage){
-//                    CO_errorReport(em, CO_EM_CAN_TX_BUS_PASSIVE, CO_EMC_CAN_PASSIVE, err);
-//                }
-//            }
-//            else{
-//                bool_t isError = CO_isError(em, CO_EM_CAN_TX_BUS_PASSIVE);
-//                if(isError){
-//                    CO_errorReset(em, CO_EM_CAN_TX_BUS_PASSIVE, err);
-//                    CO_errorReset(em, CO_EM_CAN_TX_OVERFLOW, err);
-//                }
-//            }
-//
-//            if((rxErrors < 96U) && (txErrors < 96U)){       /* no error */
-//                CO_errorReset(em, CO_EM_CAN_BUS_WARNING, err);
-//            }
-//        }
-//
-//        if(overflow != 0U){                                 /* CAN RX bus overflow */
-//            CO_errorReport(em, CO_EM_CAN_RXB_OVERFLOW, CO_EMC_CAN_OVERRUN, err);
-//        }
-//    }
+  /* No error handling in bootloader */
 }
 
 /******************************************************************************/
@@ -320,19 +236,17 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
   }
 
   /* Wait for message */
-  state = can_poll(CANmodule->driver, timeout);
+  state = can_poll(&CANmodule->driver.can, timeout);
   if (state == CAN_ERR_TIMEOUT) {
     return CO_ERROR_TIMEOUT;
   } else if (state != CAN_OK) {
-    log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
     CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_RXMSG_OVERFLOW,
                    CO_EMC_CAN_OVERRUN, state);
     return CO_ERROR_RX_OVERFLOW;
   }
 
-  state = can_read(CANmodule->driver, &frame);
+  state = can_read(&CANmodule->driver.can, &frame);
   if (state != CAN_OK) {
-    log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
     CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_RXMSG_OVERFLOW,
                    CO_EMC_CAN_OVERRUN, state);
     return CO_ERROR_RX_OVERFLOW;
@@ -340,12 +254,6 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
 
   if ((frame.can_dlc & CAN_EFF_FLAG) != 0) {
     /* Drop extended Id Msg */
-    return CO_ERROR_NO;
-  }
-
-  if ((frame.can_id & CAN_ERR_FLAG) != 0) {
-    //todo wie errorframe weitergeben?
-    log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, frame.can_id);
     return CO_ERROR_NO;
   }
 

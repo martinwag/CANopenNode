@@ -54,9 +54,6 @@
 #include <stdbool.h>        /* for 'true', 'false' */
 #include <machine/endian.h>
 
-#include "FreeRTOS.h"
-#include "semphr.h"
-
 #include "can.h"
 
 
@@ -171,28 +168,15 @@
  * CO_SYNC_initCallback() function.
  * @{
  */
-#define CO_LOCK_CAN_SEND()      /* not needed */
-#define CO_UNLOCK_CAN_SEND()
+    /* no multi-threding and no interrupts inside bootloader */
+    #define CO_LOCK_CAN_SEND()  /**< Lock critical section in CO_CANsend() */
+    #define CO_UNLOCK_CAN_SEND()/**< Unlock critical section in CO_CANsend() */
 
-extern SemaphoreHandle_t CO_EMCY_mtx;
-/** Lock critical section in CO_errorReport() or CO_errorReset() */
-static inline void CO_LOCK_EMCY(void) { (void)xSemaphoreTake(CO_EMCY_mtx, portMAX_DELAY); }
-/** Unlock critical section in CO_errorReport() or CO_errorReset() */
-static inline void CO_UNLOCK_EMCY(void) { (void)xSemaphoreGive(CO_EMCY_mtx); }
+    #define CO_LOCK_EMCY()      /**< Lock critical section in CO_errorReport() or CO_errorReset() */
+    #define CO_UNLOCK_EMCY()    /**< Unlock critical section in CO_errorReport() or CO_errorReset() */
 
-extern SemaphoreHandle_t CO_OD_mtx;
-/** Lock critical section when accessing Object Dictionary */
-static inline void CO_LOCK_OD(void) { (void)xSemaphoreTake(CO_OD_mtx, portMAX_DELAY); }
-/** Unock critical section when accessing Object Dictionary */
-static inline void CO_UNLOCK_OD(void) { (void)xSemaphoreGive(CO_OD_mtx); }
-/** @} */
-
-/**
- * @name can driver queue sizes
- * @{
- */
-#define CO_QUEUE_RX 16  /**< Receive queue message count in driver */
-#define CO_QUEUE_TX 16  /**< Transmit queue message count in driver */
+    #define CO_LOCK_OD()        /**< Lock critical section when accessing Object Dictionary */
+    #define CO_UNLOCK_OD()      /**< Unock critical section when accessing Object Dictionary */
 /** @} */
 
 /**
@@ -264,9 +248,9 @@ typedef struct{
     uint32_t            ident;          /**< CAN identifier as aligned in CAN module */
     uint8_t             DLC ;           /**< Length of CAN message. (DLC may also be part of ident) */
     uint8_t             data[8] __attribute__((aligned(8)));/**< 8 data bytes */
-    volatile bool_t     bufferFull;     /**< True if previous message is still in buffer */
+    bool_t              bufferFull;     /**< True if previous message is still in buffer */
     /** Synchronous PDO messages has this flag set. It prevents them to be sent outside the synchronous window */
-    volatile bool_t     syncFlag;
+    bool_t              syncFlag;
 }CO_CANtx_t;
 
 
@@ -279,20 +263,23 @@ typedef struct{
     uint16_t            rxSize;         /**< From CO_CANmodule_init() */
     CO_CANtx_t         *txArray;        /**< From CO_CANmodule_init() */
     uint16_t            txSize;         /**< From CO_CANmodule_init() */
-    volatile bool_t     CANnormal;      /**< CAN module is in normal mode */
+    bool_t              CANnormal;      /**< CAN module is in normal mode */
     /** Value different than zero indicates, that CAN module hardware filters
       * are used for CAN reception. If there is not enough hardware filters,
       * they won't be used. In this case will be *all* received CAN messages
       * processed by software. */
-    volatile bool_t     useCANrxFilters;
+    bool_t              useCANrxFilters;
     /** Equal to 1, when the first transmitted message (bootup message) is in CAN TX buffers */
-    volatile bool_t     firstCANtxMessage;
+    bool_t              firstCANtxMessage;
     /** Number of messages in transmit buffer, which are waiting to be copied to the CAN module */
-    volatile uint32_t   CANtxCount;
+    uint32_t            CANtxCount;
     uint32_t            errOld;         /**< Previous state of CAN errors */
     void               *em;             /**< Emergency object */
 
-    can_t              *driver;         /**< neuberger can driver object */
+    struct {
+      bool_t             initialized;
+      can_t              can;          /**< neuberger can driver object */
+    } driver;
 }CO_CANmodule_t;
 
 
