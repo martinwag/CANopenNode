@@ -351,6 +351,33 @@ typedef enum{
     CO_ODA_MB_VALUE         = 0x0080U   /**< True when variable is a multibyte value */
 }CO_SDO_OD_attributes_t;
 
+/**
+* @defgroup CO_ObjDicId Object Dictionary entries
+* Those object dictionary entries are defined by CiA documents
+*
+* One can access the OD by either direcly reading/writing the variables inside CO_OD.c/h
+* or by using getter functions in combination with the OD entry like this
+*
+* \code{.c}
+* index = CO_OD_find(CO->SDO[0], OD_H1001_ERR_REG);
+* if (index == 0xffff) {
+*   return;
+* }
+* length = CO_OD_getLength(CO->SDO[0], index, 1);
+* if (length != sizeof(new_data)) {
+*  return;
+* }
+*
+* p = CO_OD_getDataPointer(CO->SDO[0], index, 1);
+* if (p_data == NULL) {
+*   return;
+* }
+* CO_LOCK_OD();
+* *p = new_data;
+* CO_UNLOCK_OD(); //todo do I need lock/unlock here?
+* \endcode
+*
+* @{ */
 
 /**
  * Common CiA301 object dictionary entries.
@@ -434,6 +461,7 @@ typedef enum{
     OD_H1F58_PROGRAM_DATA         = 0x1F56U,/**< Program data (manager side) */
 }CO_ObjDicId302_3_t;
 
+/** @} Object dictionary entries defined by CiA documentation */
 
 /**
  * Bit masks for flags associated with variable from @ref CO_SDO_objectDictionary.
