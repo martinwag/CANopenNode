@@ -49,14 +49,15 @@
 #include "CO_Emergency.h"
 
 #include "can.h"
+#include "modtype.h"
 #include "can_error.h"
 #include "driver_defs.h"
 #include "log.h"
 
 static const char CAN_ERR_MSG[] = "CAN err %d 0x%x";
 
-SemaphoreHandle_t CO_EMCY_mtx = NULL;
-SemaphoreHandle_t CO_OD_mtx = NULL;
+SemaphoreHandle_t CO_EMCY_mtx = NULL; /* mutex type semaphore */
+SemaphoreHandle_t CO_OD_mtx = NULL;   /* mutex type semaphore */
 
 /******************************************************************************/
 void CO_CANsetConfigurationMode(int32_t CANbaseAddress)
@@ -131,7 +132,7 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
       return CO_ERROR_OUT_OF_MEMORY;
     }
 
-    state = can_init(CANmodule->driver, DRIVER_HW_TEMPLATE, CAN_MODULE_A);
+    state = can_init(CANmodule->driver, MODTYPE_HW_TEMPLATE, CAN_MODULE_A);
     if (state != CAN_OK) {
       log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
       return CO_ERROR_ILLEGAL_ARGUMENT;
@@ -302,7 +303,7 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule)
 //        if(overflow != 0U){                                 /* CAN RX bus overflow */
 //            CO_errorReport(em, CO_EM_CAN_RXB_OVERFLOW, CO_EMC_CAN_OVERRUN, err);
 //        }
-//    }
+//    } todo error handling
 }
 
 /******************************************************************************/
