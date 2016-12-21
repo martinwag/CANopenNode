@@ -1,5 +1,5 @@
 /**
- * CAN module object for neuberger. + FreeRTOS.
+ * CAN module object for neuberger boot loader.
  *
  * @file        CO_driver.h
  * @ingroup     CO_driver

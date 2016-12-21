@@ -1,5 +1,5 @@
 /**
- * CAN module object for neuberger. + FreeRTOS.
+ * CAN module object for neuberger boot loader.
  *
  * @file        CO_driver.c
  * @ingroup     CO_driver
@@ -43,9 +43,9 @@
  * to do so, delete this exception statement from your version.
  */
 
-#include "CO_driver.h"
-
 #include <string.h>
+
+#include "CO_driver.h"
 
 #include "CO_Emergency.h"
 
@@ -107,7 +107,7 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
 
   /* Configure CAN module */
   if (CANmodule->driver.initialized == false) {
-    state = can_init(&CANmodule->driver.can, DRIVER_HW_TEMPLATE, CAN_MODULE_A); //todo parameter verwenden
+    state = can_init(&CANmodule->driver.can, MODTYPE_HW_TEMPLATE, CAN_MODULE_A); //todo parameter verwenden
     if (state != CAN_OK) {
       return CO_ERROR_ILLEGAL_ARGUMENT;
     }
