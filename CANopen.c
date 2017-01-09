@@ -52,6 +52,10 @@
    be generated with calloc(). */
 /* #define CO_USE_GLOBALS */
 
+/* If defined, the user provides an own implemetation for calculating the
+ * CRC16 CCITT checksum. */
+/* #define CO_USE_OWN_CRC16 */
+
 
 #ifndef CO_USE_GLOBALS
     #include <stdlib.h> /*  for malloc, free */
@@ -349,7 +353,7 @@ CO_ReturnError_t CO_init(
     CO_CANsetConfigurationMode(CANbaseAddress);
 
     /* Verify CANopen Node-ID */
-    if(nodeId<1 || nodeId>127) nodeId = 0x10;
+    if(nodeId<1 || nodeId>127) nodeId = 0x10; //todo ??? ernsthaft
 
 
     err = CO_CANmodule_init(
