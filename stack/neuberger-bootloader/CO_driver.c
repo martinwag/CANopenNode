@@ -88,8 +88,7 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
   CANmodule->txArray = txArray;
   CANmodule->txSize = txSize;
   CANmodule->CANnormal = false;
-  //todo example decides usage of hw/sw filters depending if there are enough hw filters
-  CANmodule->useCANrxFilters = false;
+  CANmodule->useCANrxFilters = true;
   CANmodule->firstCANtxMessage = true;
   CANmodule->CANtxCount = 0U;
   CANmodule->errOld = 0U;
@@ -107,14 +106,14 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
 
   /* Configure CAN module */
   if (CANmodule->driver.initialized == false) {
-    state = can_init(&CANmodule->driver.can, MODTYPE_HW_TEMPLATE, CAN_MODULE_A); //todo parameter verwenden
+    state = can_init(&CANmodule->driver.can, MODTYPE_HW_TEMPLATE, CANbaseAddress);
     if (state != CAN_OK) {
       return CO_ERROR_ILLEGAL_ARGUMENT;
     }
     CANmodule->driver.initialized = true;
   }
 
-  /* Configure CAN module hardware filters todo */
+  /* Configure CAN module hardware filters */
   if (CANmodule->useCANrxFilters) {
     /* CAN module filters are used, they will be configured with */
     /* CO_CANrxBufferInit() functions, called by separate CANopen */
@@ -140,6 +139,9 @@ CO_ReturnError_t CO_CANrxBufferInit(CO_CANmodule_t *CANmodule, uint16_t index,
     uint16_t ident, uint16_t mask, bool_t rtr, void *object,
     void (*pFunct)(void *object, const CO_CANrxMsg_t *message))
 {
+  struct can_filter filter;
+  can_state_t state;
+
   if ((CANmodule != NULL) && (object != NULL) && (pFunct != NULL)
       && (index < CANmodule->rxSize)) {
     /* buffer, which will be configured */
@@ -158,7 +160,15 @@ CO_ReturnError_t CO_CANrxBufferInit(CO_CANmodule_t *CANmodule, uint16_t index,
 
     /* Set CAN hardware module filter and mask. */
     if (CANmodule->useCANrxFilters) {
-      //todo
+      filter.can_id = buffer->ident;
+      filter.can_mask = buffer->mask;
+      state = can_ioctl(&CANmodule->driver.can, CAN_SET_FILTER, &filter);
+      if (state != CAN_OK) {
+        /* We don't have enough hardware filters, fall back to software
+         * filtering */
+        (void)can_ioctl(&CANmodule->driver.can, CAN_SET_FILTER, NULL);
+        CANmodule->useCANrxFilters = false;
+      }
     }
   } else {
     return CO_ERROR_ILLEGAL_ARGUMENT;
@@ -196,9 +206,7 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
 
   if ((CANmodule != NULL) && (buffer != NULL)) {
     state = can_write(&CANmodule->driver.can, (struct can_frame*) buffer);
-    if (state != CAN_OK) {
-      CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW,
-                     CO_EMC_CAN_OVERRUN, state);
+    if (state != CAN_OK) {;
       return CO_ERROR_TX_OVERFLOW;
     }
   } else {
@@ -239,16 +247,11 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
   state = can_poll(&CANmodule->driver.can, timeout);
   if (state == CAN_ERR_TIMEOUT) {
     return CO_ERROR_TIMEOUT;
-  } else if (state != CAN_OK) {
-    CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_RXMSG_OVERFLOW,
-                   CO_EMC_CAN_OVERRUN, state);
-    return CO_ERROR_RX_OVERFLOW;
   }
 
   state = can_read(&CANmodule->driver.can, &frame);
   if (state != CAN_OK) {
-    CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_RXMSG_OVERFLOW,
-                   CO_EMC_CAN_OVERRUN, state);
+    can_flush(&CANmodule->driver.can);
     return CO_ERROR_RX_OVERFLOW;
   }
 
@@ -257,34 +260,22 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
     return CO_ERROR_NO;
   }
 
+  /* The template supports hardware and software filtering modes. However,
+   * hardware filtering mode requires to get filter match index from hardware,
+   * which is not implemented in our driver (stm32 supports it) */
   rx_id = frame.can_id & CAN_SFF_MASK;
-  if (CANmodule->useCANrxFilters) {
-    /* CAN module filters are used. Message with known 11-bit identifier has */
-    /* been received */
-//    i = 0; /* get index of the received message here. Or something similar */
-//    if (i < CANmodule->rxSize) {
-//      buffer = &CANmodule->rxArray[i];
-//      /* verify also RTR */
-//      if (((rx_id ^ buffer->ident) & buffer->mask) == 0U) {
-//        msgMatched = true;
-//      }
-//    } todo
-  } else {
-    /* CAN module filters are not used, message with any standard 11-bit identifier */
-    /* has been received. Search rxArray form CANmodule for the same CAN-ID. */
-    buffer = &CANmodule->rxArray[0];
-    for (i = CANmodule->rxSize; i > 0U; i--) {
-      if (((rx_id ^ buffer->ident) & buffer->mask) == 0U) {
-        matched = true;
-        break;
-      }
-      buffer++;
+  buffer = &CANmodule->rxArray[0];
+  for (i = CANmodule->rxSize; i > 0U; i--) {
+    if (((rx_id ^ buffer->ident) & buffer->mask) == 0U) {
+      matched = true;
+      break;
     }
+    buffer++;
+  }
 
-    /* Call specific function, which will process the message */
-    if (matched && (buffer->pFunct != NULL)) {
-      buffer->pFunct(buffer->object, (CO_CANrxMsg_t*) &frame);
-    }
+  /* Call specific function, which will process the message */
+  if (matched && (buffer->pFunct != NULL)) {
+    buffer->pFunct(buffer->object, (CO_CANrxMsg_t*) &frame);
   }
   return CO_ERROR_NO;
 }
