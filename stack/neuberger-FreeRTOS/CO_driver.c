@@ -137,6 +137,9 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
       return CO_ERROR_ILLEGAL_ARGUMENT;
     }
 
+    tmp = CANbitRate;
+    (void)can_ioctl(CANmodule->driver, CAN_SET_BAUDRATE, &tmp);
+
     /* CANopenNode supports tx non-block by using the bufferFull flag, however
      * we do not take advantage of this. When the queue is full, all following
      * messages are dropped */
@@ -162,7 +165,9 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
 /******************************************************************************/
 void CO_CANmodule_disable(CO_CANmodule_t *CANmodule)
 {
-  /* keine weiteren Aktionen */
+  can_deinit(CANmodule->driver);
+  can_free(CANmodule->driver);
+  CANmodule->driver = NULL;
 }
 
 /******************************************************************************/
