@@ -83,10 +83,40 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
   uint16_t i;
   uint32_t tmp;
   can_state_t state;
+  can_baud_t baud;
 
   /* verify arguments */
   if ((CANmodule == NULL) || (rxArray == NULL) || (txArray == NULL)) {
     return CO_ERROR_ILLEGAL_ARGUMENT;
+  }
+
+  switch (CANbitRate) {
+    case 10:
+      baud = CAN_BAUD_10;
+      break;
+    case 20:
+      baud = CAN_BAUD_20;
+      break;
+    case 50:
+      baud = CAN_BAUD_50;
+      break;
+    case 100:
+      baud = CAN_BAUD_100;
+      break;
+    case 125:
+      baud = CAN_BAUD_125;
+      break;
+    case 250:
+      baud = CAN_BAUD_250;
+      break;
+    case 500:
+      baud = CAN_BAUD_500;
+      break;
+    case 1000:
+      baud = CAN_BAUD_1000;
+      break;
+    default:
+      return CO_ERROR_ILLEGAL_ARGUMENT;
   }
 
   /* Configure object variables */
@@ -137,8 +167,7 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
       return CO_ERROR_ILLEGAL_ARGUMENT;
     }
 
-    tmp = CANbitRate;
-    (void)can_ioctl(CANmodule->driver, CAN_SET_BAUDRATE, &tmp);
+    (void)can_ioctl(CANmodule->driver, CAN_SET_BAUDRATE, &baud);
 
     /* CANopenNode supports tx non-block by using the bufferFull flag, however
      * we do not take advantage of this. When the queue is full, all following
