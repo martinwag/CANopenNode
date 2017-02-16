@@ -52,7 +52,11 @@
 #include <stddef.h>         /* for 'NULL' */
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
-#include <machine/endian.h>
+#if __has_include("endian.h")
+  #include <endian.h>
+#else
+  #include <machine/endian.h>
+#endif
 
 #include "FreeRTOS.h"
 #include "semphr.h"
