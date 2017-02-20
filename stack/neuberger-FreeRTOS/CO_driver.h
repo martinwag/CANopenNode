@@ -47,20 +47,19 @@
 #ifndef CO_DRIVER_H
 #define CO_DRIVER_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Include processor header file */
 #include <stddef.h>         /* for 'NULL' */
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
-#if __has_include("endian.h")
-  #include <endian.h>
-#else
-  #include <machine/endian.h>
-#endif
 
 #include "FreeRTOS.h"
 #include "semphr.h"
 
+#include "utils.h"
 #include "can.h"
 
 
@@ -306,8 +305,8 @@ typedef struct{
  * Depending on processor or compiler architecture, one of the two macros must
  * be defined: CO_LITTLE_ENDIAN or CO_BIG_ENDIAN. CANopen itself is little endian.
  */
-#ifdef _BYTE_ORDER
-#if _BYTE_ORDER == _LITTLE_ENDIAN
+#ifdef __BYTE_ORDER
+#if __BYTE_ORDER == __LITTLE_ENDIAN
     #define CO_LITTLE_ENDIAN
 #else
     #define CO_BIG_ENDIAN
@@ -487,6 +486,9 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule);
  */
 CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout);
 
+#ifdef __cplusplus
+}
+#endif /*__cplusplus*/
 
 /** @} */
 #endif
