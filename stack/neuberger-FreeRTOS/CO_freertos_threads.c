@@ -128,6 +128,8 @@ void CANrx_threadTmr_process(void)
   result = CO_CANrxWait(CO->CANmodule[0], timeout);
   switch (result) {
     case CO_ERROR_TIMEOUT:
+      CO_LOCK_OD();
+
       if(CO->CANmodule[0]->CANnormal == true) {
 
         us_interval = threadRT.interval * 1000;
@@ -138,6 +140,8 @@ void CANrx_threadTmr_process(void)
         /* Write outputs */
         CO_process_TPDO(CO, syncWas, us_interval);
       }
+
+      CO_UNLOCK_OD();
 
       /* Calculate time of next execution. This ist done by adding interval to
        * now */
