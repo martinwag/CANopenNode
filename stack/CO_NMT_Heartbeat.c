@@ -86,6 +86,10 @@ static void CO_NMT_receive(void *object, const CO_CANrxMsg_t *msg){
                 NMT->resetCommand = CO_RESET_COMM;
                 break;
         }
+
+        if(NMT->pFunctNMT!=NULL){
+            NMT->pFunctNMT(NMT->operatingState);
+        }
     }
 }
 
@@ -147,6 +151,17 @@ CO_ReturnError_t CO_NMT_init(
             0);                 /* synchronous message flag bit */
 
     return CO_ERROR_NO;
+}
+
+
+/******************************************************************************/
+void CO_NMT_initCallback(
+        CO_NMT_t               *NMT,
+        void                  (*pFunctNMT)(CO_NMT_internalState_t state))
+{
+    if(NMT != NULL){
+        NMT->pFunctNMT = pFunctNMT;
+    }
 }
 
 
@@ -319,3 +334,15 @@ CO_NMT_reset_cmd_t CO_NMT_process(
 
     return NMT->resetCommand;
 }
+
+
+/******************************************************************************/
+CO_NMT_internalState_t CO_NMT_getInternalState(
+        CO_NMT_t               *NMT)
+{
+    if(NMT != NULL){
+        return NMT->operatingState;
+    }
+    return CO_NMT_INITIALIZING;
+}
+
