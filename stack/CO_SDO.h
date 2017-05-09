@@ -351,36 +351,9 @@ typedef enum{
     CO_ODA_MB_VALUE         = 0x0080U   /**< True when variable is a multibyte value */
 }CO_SDO_OD_attributes_t;
 
-/**
-* @defgroup CO_ObjDicId Object Dictionary entries
-* Those object dictionary entries are defined by CiA documents
-*
-* One can access the OD by either direcly reading/writing the variables inside CO_OD.c/h
-* or by using getter functions in combination with the OD entry like this
-*
-* \code{.c}
-* index = CO_OD_find(CO->SDO[0], OD_H1001_ERR_REG);
-* if (index == 0xffff) {
-*   return;
-* }
-* length = CO_OD_getLength(CO->SDO[0], index, 1);
-* if (length != sizeof(new_data)) {
-*  return;
-* }
-*
-* p = CO_OD_getDataPointer(CO->SDO[0], index, 1);
-* if (p_data == NULL) {
-*   return;
-* }
-* CO_LOCK_OD();
-* *p = new_data;
-* CO_UNLOCK_OD(); //todo do I need lock/unlock here?
-* \endcode
-*
-* @{ */
 
 /**
- * Common CiA301 object dictionary entries.
+ * Common DS301 object dictionary entries.
  */
 typedef enum{
     OD_H1000_DEV_TYPE             = 0x1000U,/**< Device type */
@@ -439,29 +412,6 @@ typedef enum{
     OD_H1A03_TXPDO_4_MAPPING      = 0x1A03U /**< TXPDO mapping parameters */
 }CO_ObjDicId_t;
 
-
-/**
- * Common DSP302-3 object dictionary entries.
- */
-typedef enum{
-    OD_H1F20_STORE_DCF            = 0x1F20U,/**< Store DCF */
-    OD_H1F21_STORE_FORMAT         = 0x1F21U,/**< Store format */
-    OD_H1F22_CONCISE_DCF          = 0x1F22U,/**< Concise DCF */
-    OD_H1F23_ST_EDS_NMT_SLAVE     = 0x1F23U,/**< Store EDS NMT slave */
-    OD_H1F24_ST_F_EDS_NMT_SLAVE   = 0x1F24U,/**< Store format EDS NMT slave */
-    OD_H1F25_REQUEST_CONFIG       = 0x1F25U,/**< Request configuration */
-    OD_H1F26_EXP_CONFIG_DATE      = 0x1F26U,/**< Expected configuration date */
-    OD_H1F27_EXP_CONFIG_TIME      = 0x1F27U,/**< Expected configuration time */
-
-    OD_H1F50_PROGRAM_DATA         = 0x1F50U,/**< Program data */
-    OD_H1F51_PROGRAM_CONTROL      = 0x1F51U,/**< Program control */
-    OD_H1F55_EXP_PROG_SW_ID       = 0x1F55U,/**< Expected program software identification */
-    OD_H1F56_PROG_SW_ID           = 0x1F56U,/**< Program software identification */
-    OD_H1F57_FLASH_STATUS         = 0x1F57U,/**< Flash status indication */
-    OD_H1F58_PROGRAM_DATA         = 0x1F56U,/**< Program data (manager side) */
-}CO_ObjDicId302_3_t;
-
-/** @} Object dictionary entries defined by CiA documentation */
 
 /**
  * Bit masks for flags associated with variable from @ref CO_SDO_objectDictionary.
