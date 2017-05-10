@@ -208,9 +208,10 @@ CO_ReturnError_t CO_NMT_init(
  * Function initializes optional callback function, which is called after
  * NMT State change has occured. Function may wake up external task which
  * handles NMT events.
+ * The first call is made immediately to give the consumer the current NMT state.
  *
- * Be aware that the callback function is run inside the CAN receive function
- * context. Depending on the driver, this might be inside an interrupt!
+ * @remark Be aware that the callback function is run inside the CAN receive
+ * function context. Depending on the driver, this might be inside an interrupt!
  *
  * @param NMT This object.
  * @param pFunctNMT Pointer to the callback function. Not called if NULL.

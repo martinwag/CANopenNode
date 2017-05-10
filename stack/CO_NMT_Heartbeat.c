@@ -88,7 +88,7 @@ static void CO_NMT_receive(void *object, const CO_CANrxMsg_t *msg){
                 break;
         }
 
-        if(NMT->pFunctNMT!=NULL && currentOperatingState!= NMT->operatingState){
+        if(NMT->pFunctNMT!=NULL && currentOperatingState!=NMT->operatingState){
             NMT->pFunctNMT(NMT->operatingState);
         }
     }
@@ -162,6 +162,9 @@ void CO_NMT_initCallback(
 {
     if(NMT != NULL){
         NMT->pFunctNMT = pFunctNMT;
+        if(NMT->pFunctNMT != NULL){
+            NMT->pFunctNMT(NMT->operatingState);
+        }
     }
 }
 
@@ -212,6 +215,8 @@ CO_NMT_reset_cmd_t CO_NMT_process(
         uint16_t               *timerNext_ms)
 {
     uint8_t CANpassive;
+
+    uint8_t currentOperatingState = NMT->operatingState;
 
     NMT->HBproducerTimer += timeDifference_ms;
 
@@ -332,6 +337,9 @@ CO_NMT_reset_cmd_t CO_NMT_process(
         }
     }
 
+    if(NMT->pFunctNMT!=NULL && currentOperatingState!=NMT->operatingState){
+        NMT->pFunctNMT(NMT->operatingState);
+    }
 
     return NMT->resetCommand;
 }
