@@ -331,9 +331,7 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
   }
 
   /* Tx successfull -> reset OF */
-  if (CO_isError(em, CO_EM_RXMSG_OVERFLOW)) {
-    CO_errorReset(em, CO_EM_CAN_TX_OVERFLOW, 0);
-  }
+  CO_errorReset(em, CO_EM_CAN_TX_OVERFLOW, 0);
 
   CO_CANSignalRxTx();
   return CO_ERROR_NO;
@@ -433,9 +431,7 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
   }
 
   /* Rx successfull -> reset OF */
-  if (CO_isError(em, CO_EM_RXMSG_OVERFLOW)) {
-    CO_errorReset(em, CO_EM_RXMSG_OVERFLOW, 0);
-  }
+  CO_errorReset(em, CO_EM_RXMSG_OVERFLOW, 0);
 
   /* The template supports hardware and software filtering modes. However,
    * hardware filtering mode requires to get filter match index from hardware,
