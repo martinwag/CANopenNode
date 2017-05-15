@@ -49,6 +49,7 @@
 #include "CO_Emergency.h"
 
 #include "can.h"
+#include "led.h"
 #include "modtype.h"
 #include "can_error.h"
 #include "driver_defs.h"
@@ -58,6 +59,37 @@ static const char CAN_ERR_MSG[] = "CAN err %d 0x%x";
 
 SemaphoreHandle_t CO_EMCY_mtx = NULL; /* mutex type semaphore */
 SemaphoreHandle_t CO_OD_mtx = NULL;   /* mutex type semaphore */
+QueueHandle_t CO_ERR_queue = NULL;
+static const u8 CO_ERR_queue_size = 5;
+
+/******************************************************************************/
+static inline void CO_CANSignalBusPermanentError(void)
+{
+  (void)led_set(LED_NAME_BUS_RED, LED_STATE_BLINK);
+}
+
+/******************************************************************************/
+static void CO_CANSignalBusSingleError(void)
+{
+  led_state_t state = LED_STATE_OFF;
+
+  (void)led_get(LED_NAME_BUS_RED, &state);
+  if (state == LED_STATE_OFF) {
+    (void)led_set(LED_NAME_BUS_RED, LED_STATE_PULSE);
+  }
+}
+
+/******************************************************************************/
+static inline void CO_CANSignalBusNoError(void)
+{
+  (void)led_set(LED_NAME_BUS_RED, LED_STATE_OFF);
+}
+
+/******************************************************************************/
+static inline void CO_CANSignalRxTx(void)
+{
+  (void)led_set(LED_NAME_BUS_GREEN, LED_STATE_PULSE);
+}
 
 /******************************************************************************/
 void CO_CANsetConfigurationMode(int32_t CANbaseAddress)
@@ -153,6 +185,18 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
       return CO_ERROR_OUT_OF_MEMORY;
     }
   }
+  if (CO_ERR_queue == NULL) {
+    CO_ERR_queue = xQueueCreate(CO_ERR_queue_size, sizeof(struct can_frame));
+    if (CO_ERR_queue == NULL) {
+      return CO_ERROR_OUT_OF_MEMORY;
+    }
+  }
+
+  (void)led_setup_blink(LED_NAME_BUS_RED, CO_BUS_LED_BLINK, CO_BUS_LED_BLINK);
+  (void)led_setup_blink(LED_NAME_BUS_GREEN, CO_BUS_LED_FLASH, 0);
+  (void)led_set(LED_NAME_BUS_RED, LED_STATE_OFF);
+  (void)led_set(LED_NAME_BUS_GREEN, LED_STATE_OFF);
+
   if (CANmodule->driver == NULL) {
 
     /* Configure CAN module */
@@ -197,6 +241,9 @@ void CO_CANmodule_disable(CO_CANmodule_t *CANmodule)
   can_deinit(CANmodule->driver);
   can_free(CANmodule->driver);
   CANmodule->driver = NULL;
+  xQueueReset(CO_ERR_queue);
+  (void)led_set(LED_NAME_BUS_RED, LED_STATE_OFF);
+  (void)led_set(LED_NAME_BUS_GREEN, LED_STATE_OFF);
 }
 
 /******************************************************************************/
@@ -269,19 +316,26 @@ CO_CANtx_t *CO_CANtxBufferInit(CO_CANmodule_t *CANmodule, uint16_t index,
 CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
 {
   can_state_t state;
+  CO_EM_t* em = (CO_EM_t*)CANmodule->em;
 
   if ((CANmodule != NULL) && (buffer != NULL)) {
     state = can_write(CANmodule->driver, (struct can_frame*) buffer);
     if (state != CAN_OK) {
       log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
-      CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW,
-                     CO_EMC_CAN_OVERRUN, state);
+      CO_errorReport(em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
+      CO_CANSignalBusSingleError();
       return CO_ERROR_TX_OVERFLOW;
     }
   } else {
     return CO_ERROR_ILLEGAL_ARGUMENT;
   }
 
+  /* Tx successfull -> reset OF */
+  if (CO_isError(em, CO_EM_RXMSG_OVERFLOW)) {
+    CO_errorReset(em, CO_EM_CAN_TX_OVERFLOW, 0);
+  }
+
+  CO_CANSignalRxTx();
   return CO_ERROR_NO;
 }
 
@@ -295,60 +349,48 @@ void CO_CANclearPendingSyncPDOs(CO_CANmodule_t *CANmodule)
 /******************************************************************************/
 void CO_CANverifyErrors(CO_CANmodule_t *CANmodule)
 {
-//    uint16_t rxErrors, txErrors, overflow;
-//    CO_EM_t* em = (CO_EM_t*)CANmodule->em;
-//    uint32_t err;
-//
-//    /* get error counters from module. Id possible, function may use different way to
-//     * determine errors. */
-//    rxErrors = CANmodule->txSize;
-//    txErrors = CANmodule->txSize;
-//    overflow = CANmodule->txSize;
-//
-//    err = ((uint32_t)txErrors << 16) | ((uint32_t)rxErrors << 8) | overflow;
-//
-//    if(CANmodule->errOld != err){
-//        CANmodule->errOld = err;
-//
-//        if(txErrors >= 256U){                               /* bus off */
-//            CO_errorReport(em, CO_EM_CAN_TX_BUS_OFF, CO_EMC_BUS_OFF_RECOVERED, err);
-//        }
-//        else{                                               /* not bus off */
-//            CO_errorReset(em, CO_EM_CAN_TX_BUS_OFF, err);
-//
-//            if((rxErrors >= 96U) || (txErrors >= 96U)){     /* bus warning */
-//                CO_errorReport(em, CO_EM_CAN_BUS_WARNING, CO_EMC_NO_ERROR, err);
-//            }
-//
-//            if(rxErrors >= 128U){                           /* RX bus passive */
-//                CO_errorReport(em, CO_EM_CAN_RX_BUS_PASSIVE, CO_EMC_CAN_PASSIVE, err);
-//            }
-//            else{
-//                CO_errorReset(em, CO_EM_CAN_RX_BUS_PASSIVE, err);
-//            }
-//
-//            if(txErrors >= 128U){                           /* TX bus passive */
-//                if(!CANmodule->firstCANtxMessage){
-//                    CO_errorReport(em, CO_EM_CAN_TX_BUS_PASSIVE, CO_EMC_CAN_PASSIVE, err);
-//                }
-//            }
-//            else{
-//                bool_t isError = CO_isError(em, CO_EM_CAN_TX_BUS_PASSIVE);
-//                if(isError){
-//                    CO_errorReset(em, CO_EM_CAN_TX_BUS_PASSIVE, err);
-//                    CO_errorReset(em, CO_EM_CAN_TX_OVERFLOW, err);
-//                }
-//            }
-//
-//            if((rxErrors < 96U) && (txErrors < 96U)){       /* no error */
-//                CO_errorReset(em, CO_EM_CAN_BUS_WARNING, err);
-//            }
-//        }
-//
-//        if(overflow != 0U){                                 /* CAN RX bus overflow */
-//            CO_errorReport(em, CO_EM_CAN_RXB_OVERFLOW, CO_EMC_CAN_OVERRUN, err);
-//        }
-//    } todo error handling
+  BaseType_t result;
+  struct can_frame frame;
+  CO_EM_t* em = (CO_EM_t*)CANmodule->em;
+
+  result = xQueueReceive(CO_ERR_queue, &frame, 0);
+  if (result == pdTRUE) {
+    switch (frame.can_id & CAN_ERR_MASK) {
+      case CAN_ERR_CRTL:
+        if ((frame.data[1] & CAN_ERR_CRTL_RX_OVERFLOW) != 0) {
+          CO_errorReport(em, CO_EM_CAN_RXB_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
+          CO_CANSignalBusSingleError();
+
+        } else if ((frame.data[1] & CAN_ERR_CRTL_TX_OVERFLOW) != 0) {
+          CO_errorReport(em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
+          CO_CANSignalBusSingleError();
+
+        } else if ((frame.data[1] & CAN_ERR_CRTL_RX_PASSIVE) != 0) {
+          CO_errorReport(em, CO_EM_CAN_RX_BUS_PASSIVE, CO_EMC_CAN_PASSIVE, 0);
+          CO_CANSignalBusPermanentError();
+
+        } else if ((frame.data[1] & CAN_ERR_CRTL_TX_PASSIVE) != 0) {
+          CO_errorReport(em, CO_EM_CAN_TX_BUS_PASSIVE, CO_EMC_CAN_PASSIVE, 0);
+          CO_CANSignalBusPermanentError();
+
+        } else if ((frame.data[1] & CAN_ERR_CRTL_ACTIVE) != 0) {
+          /* active -> Busfehler quittieren */
+          CO_errorReset(em, CO_EM_CAN_RX_BUS_PASSIVE, 0);
+          CO_errorReset(em, CO_EM_CAN_TX_BUS_PASSIVE, 0);
+          CO_errorReset(em, CO_EM_CAN_TX_BUS_OFF, 0);
+          CO_CANSignalBusNoError();
+        } else {
+          /* Everyting else, eg. Warning level */
+          CO_CANSignalBusSingleError();
+        }
+        break;
+      case CAN_ERR_BUSOFF:
+        /* wird verschickt wenn wir nicht mehr "Bus Off" sind */
+        CO_errorReport(em, CO_EM_CAN_TX_BUS_OFF, CO_EMC_BUS_OFF_RECOVERED, 0);
+        CO_CANSignalBusPermanentError();
+        break;
+    }
+  }
 }
 
 /******************************************************************************/
@@ -357,8 +399,8 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
   struct can_frame frame;
   can_state_t state;
   uint32_t i;
-  uint32_t rx_id;
   CO_CANrx_t *buffer = NULL;
+  CO_EM_t* em = (CO_EM_t*)CANmodule->em;
   bool_t matched = false;
 
   if (CANmodule == NULL) {
@@ -371,37 +413,36 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
     return CO_ERROR_TIMEOUT;
   } else if (state != CAN_OK) {
     log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
-    CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_RXMSG_OVERFLOW,
-                   CO_EMC_CAN_OVERRUN, state);
+    CO_errorReport(em, CO_EM_RXMSG_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
+    CO_CANSignalBusSingleError();
     return CO_ERROR_RX_OVERFLOW;
   }
 
   state = can_read(CANmodule->driver, &frame);
   if (state != CAN_OK) {
     log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
-    CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_RXMSG_OVERFLOW,
-                   CO_EMC_CAN_OVERRUN, state);
+    CO_errorReport(em, CO_EM_RXMSG_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
+    CO_CANSignalBusSingleError();
     return CO_ERROR_RX_OVERFLOW;
   }
 
-  if ((frame.can_dlc & CAN_EFF_FLAG) != 0) {
-    /* Drop extended Id Msg */
+  if ((frame.can_id & CAN_ERR_FLAG) != 0) {
+    (void)xQueueSend(CO_ERR_queue, &frame, 0);
+    log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, frame.can_id);
     return CO_ERROR_NO;
   }
 
-  if ((frame.can_id & CAN_ERR_FLAG) != 0) {
-    //todo wie errorframe weitergeben?
-    log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, frame.can_id);
-    return CO_ERROR_NO;
+  /* Rx successfull -> reset OF */
+  if (CO_isError(em, CO_EM_RXMSG_OVERFLOW)) {
+    CO_errorReset(em, CO_EM_RXMSG_OVERFLOW, 0);
   }
 
   /* The template supports hardware and software filtering modes. However,
    * hardware filtering mode requires to get filter match index from hardware,
    * which is not implemented in our driver (stm32 supports it) */
-  rx_id = frame.can_id & CAN_SFF_MASK;
   buffer = &CANmodule->rxArray[0];
   for (i = CANmodule->rxSize; i > 0U; i--) {
-    if (((rx_id ^ buffer->ident) & buffer->mask) == 0U) {
+    if ((((frame.can_id & CAN_EFF_MASK) ^ buffer->ident) & buffer->mask) == 0U) {
       matched = true;
       break;
     }
@@ -411,6 +452,7 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
   /* Call specific function, which will process the message */
   if (matched && (buffer->pFunct != NULL)) {
     buffer->pFunct(buffer->object, (CO_CANrxMsg_t*) &frame);
+    CO_CANSignalRxTx();
   }
 
   return CO_ERROR_NO;

@@ -199,6 +199,12 @@ static inline void CO_UNLOCK_OD(void) { (void)xSemaphoreGive(CO_OD_mtx); }
 /** @} */
 
 /**
+ * Bus LED rx/tx/err flash duration
+ */
+#define CO_BUS_LED_FLASH 50  /**< ms */
+#define CO_BUS_LED_BLINK 1000  /**< ms */
+
+/**
  * @defgroup CO_dataTypes Data types
  * @{
  *
