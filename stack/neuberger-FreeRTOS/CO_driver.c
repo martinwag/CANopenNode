@@ -411,7 +411,7 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
     return CO_ERROR_TIMEOUT;
   } else if (state != CAN_OK) {
     log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
-    CO_errorReport(em, CO_EM_RXMSG_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
+    CO_errorReport(em, CO_EM_CAN_RXB_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
     CO_CANSignalBusSingleError();
     return CO_ERROR_RX_OVERFLOW;
   }
@@ -419,7 +419,7 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
   state = can_read(CANmodule->driver, &frame);
   if (state != CAN_OK) {
     log_printf(LOG_DEBUG, CAN_ERR_MSG, __LINE__, state);
-    CO_errorReport(em, CO_EM_RXMSG_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
+    CO_errorReport(em, CO_EM_CAN_RXB_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
     CO_CANSignalBusSingleError();
     return CO_ERROR_RX_OVERFLOW;
   }
@@ -431,7 +431,7 @@ CO_ReturnError_t CO_CANrxWait(CO_CANmodule_t *CANmodule, uint16_t timeout)
   }
 
   /* Rx successfull -> reset OF */
-  CO_errorReset(em, CO_EM_RXMSG_OVERFLOW, 0);
+  CO_errorReset(em, CO_EM_CAN_RXB_OVERFLOW, 0);
 
   /* The template supports hardware and software filtering modes. However,
    * hardware filtering mode requires to get filter match index from hardware,
