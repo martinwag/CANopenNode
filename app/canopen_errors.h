@@ -45,8 +45,9 @@ class canopen_errors {
       OUT_VOLT_HIGH,                          //!< Output voltage too high
       OUT_VOLT_LOW,                           //!< Output voltage too low
       /* Weitere Codes */
-      MISMATCH_MODTYPE,                       //!< Firmware nicht lauff"ahig auf dieser HW
-      MISMATCH_HW_REV,                        //!< Firmware passt nicht zur HW Revision
+      INIT_MISMATCH_MODTYPE,                  //!< Firmware nicht lauff"ahig auf dieser HW
+      INIT_MISMATCH_HW_REV,                   //!< Firmware passt nicht zur HW Revision
+      INIT_INTERNAL,                          //!< anderer Initialisierungsfehler
       HARDWARE,                               //!< Externe Hardware
       INTERNAL,                               //!< Software/Controllerperipherie
 
