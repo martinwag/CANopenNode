@@ -768,13 +768,9 @@ void canopen::timer_rx_thread(void)
     wdt_trigger(wdt);
     CANrx_threadTmr_process();
 
-    if (globals.get_reboot() == true) {
-      vTaskSuspend(NULL); // keine Rechenzeit mehr verbrauchen
-    }
-    if (quit_timer_rx_thread == true) {
-      quit_timer_rx_thread = false;
-      wdt_delete(wdt);
-      vTaskDelete(NULL);
+    if ((timer_rx_suspend == true) || (globals.get_reboot() == true)) {
+      timer_rx_suspend = false;
+      vTaskSuspend(NULL);
     }
   }
 }
@@ -1193,12 +1189,18 @@ CO_ReturnError_t canopen::init(u8 addr, u32 interval)
 
   /* Configure Timer function for execution every <interval> millisecond */
   CANrx_threadTmr_init(this->worker_interval);
-  os_result = xTaskCreate(timer_rx_thread_wrapper, "CO",
-                          THREAD_STACKSIZE_CANOPEN_TIMER, this,
-                          THREAD_PRIORITY_CANOPEN_TIMER, NULL);
-  if (os_result != pdPASS) {
-    log_printf(LOG_ERR, ERR_THREAD_CREATE_FAILED, "CO");
-    return /* Let's assume */ CO_ERROR_OUT_OF_MEMORY;
+  if (timer_rx_handle != NULL) {
+    /* Thread wurde bereits gestartet und ist laufbereit */
+    vTaskResume(this->timer_rx_handle);
+  } else {
+    os_result = xTaskCreate(timer_rx_thread_wrapper, "CO",
+                            THREAD_STACKSIZE_CANOPEN_TIMER, this,
+                            THREAD_PRIORITY_CANOPEN_TIMER,
+                            &this->timer_rx_handle);
+    if (os_result != pdPASS) {
+      log_printf(LOG_ERR, ERR_THREAD_CREATE_FAILED, "CO");
+      return /* Let's assume */ CO_ERROR_OUT_OF_MEMORY;
+    }
   }
 
   /* start CAN */
@@ -1213,16 +1215,17 @@ CO_ReturnError_t canopen::init(u8 addr, u32 interval)
 
 void canopen::deinit(void)
 {
-  /* RX Handlerthread beenden */
-  quit_timer_rx_thread = true;
-  while (quit_timer_rx_thread != false) {
+  /* RX Handlerthread synchronisieren. Der Thread suspended sich dann
+   * selbst. */
+  timer_rx_suspend = true;
+  while (timer_rx_suspend != false) {
     vTaskDelay(1);
   }
 
-  CO_delete(addr);
+  CO_delete(this->addr);
 
-  reset = CO_RESET_NOT;
-  addr = 0;
+  this->reset = CO_RESET_NOT;
+  this->addr = 0;
 }
 
 void canopen::process(void)
@@ -1239,7 +1242,7 @@ void canopen::process(void)
    * - eigene Funktionalit"at */
   reset = get_reset();
   if (reset != CO_RESET_NOT){
-    log_printf(LOG_DEBUG, DEBUG_CANOPEN_RESET);
+    log_printf(LOG_DEBUG, DEBUG_CANOPEN_RESET, reset);
     switch (reset) {
       case CO_RESET_COMM:
         deinit();
