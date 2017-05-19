@@ -1201,14 +1201,15 @@ CO_ReturnError_t canopen::init(u8 addr, u32 interval)
       log_printf(LOG_ERR, ERR_THREAD_CREATE_FAILED, "CO");
       return /* Let's assume */ CO_ERROR_OUT_OF_MEMORY;
     }
+
+#ifndef UNIT_TEST
+    (void)FreeRTOS_CLIRegisterCommand(&terminal);
+#endif
+
   }
 
   /* start CAN */
   CO_CANsetNormalMode(CO->CANmodule[0]);
-
-#ifndef UNIT_TEST
-  (void)FreeRTOS_CLIRegisterCommand(&terminal);
-#endif
 
   return CO_ERROR_NO;
 }

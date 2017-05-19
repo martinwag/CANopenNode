@@ -66,7 +66,8 @@ class canopen: public canopen_errors {
 
     void *get_od_pointer(u16 index, u8 subindex, size_t size);
 
-    bool quit_timer_rx_thread;
+    volatile bool timer_rx_suspend;
+    TaskHandle_t timer_rx_handle;
     void timer_rx_thread();
 
   public:
