@@ -267,11 +267,6 @@ CO_NMT_reset_cmd_t CO_NMT_process(
 CO_NMT_internalState_t CO_NMT_getInternalState(
         CO_NMT_t               *NMT);
 
-
-#ifdef __cplusplus
-}
-#endif /*__cplusplus*/
-
 /**
  * Query current NMT state
  *
