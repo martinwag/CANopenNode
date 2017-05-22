@@ -272,5 +272,20 @@ CO_NMT_internalState_t CO_NMT_getInternalState(
 }
 #endif /*__cplusplus*/
 
+/**
+ * Query current NMT state
+ *
+ * @param NMT This object.
+ *
+ * @return #CO_NMT_internalState_t
+ */
+CO_NMT_internalState_t CO_NMT_getInternalState(
+        CO_NMT_t               *NMT);
+
+
+#ifdef __cplusplus
+}
+#endif /*__cplusplus*/
+
 /** @} */
 #endif
