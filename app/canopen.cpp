@@ -497,7 +497,7 @@ CO_SDO_abortCode_t canopen::temperature_callback(CO_ODF_arg_t *p_odf_arg)
   float temp;
 
   switch (p_odf_arg->subIndex) {
-    case OD_2108_1_temperature_mainPCB:
+    case OD_2108_1_temperature_coreTemperature:
       temp = globals.get_temp();
       *(reinterpret_cast<REAL32*>(p_odf_arg->data)) = temp;
       break;
@@ -518,7 +518,7 @@ CO_SDO_abortCode_t canopen::voltage_callback(CO_ODF_arg_t *p_odf_arg)
   float vss;
 
   switch (p_odf_arg->subIndex) {
-    case OD_2109_1_voltage_mainPCBSupply:
+    case OD_2109_1_voltage_supplyVoltage:
       vss = globals.get_vss();
       *(reinterpret_cast<REAL32*>(p_odf_arg->data)) = vss;
       break;
