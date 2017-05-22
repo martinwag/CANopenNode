@@ -80,9 +80,10 @@ void threadMain_process(CO_NMT_reset_cmd_t *reset)
 
   diff = (uint16_t)(now - threadMain.interval_last);
 
-  next = threadMain.interval;
   do {
+    next = threadMain.interval;
     *reset = CO_process(CO, diff, &next);
+    diff = 0;
   } while ((*reset == CO_RESET_NOT) && (next == 0));
 
   threadMain.interval_time = next;
