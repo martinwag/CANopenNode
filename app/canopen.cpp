@@ -497,6 +497,8 @@ CO_SDO_abortCode_t canopen::temperature_callback(CO_ODF_arg_t *p_odf_arg)
   float temp;
 
   switch (p_odf_arg->subIndex) {
+    case OD_2108_0_temperature_maxSubIndex:
+      break;
     case OD_2108_1_temperature_coreTemperature:
       temp = globals.get_temp();
       *(reinterpret_cast<REAL32*>(p_odf_arg->data)) = temp;
@@ -518,6 +520,8 @@ CO_SDO_abortCode_t canopen::voltage_callback(CO_ODF_arg_t *p_odf_arg)
   float vss;
 
   switch (p_odf_arg->subIndex) {
+    case OD_2109_0_voltage_maxSubIndex:
+      break;
     case OD_2109_1_voltage_supplyVoltage:
       vss = globals.get_vss();
       *(reinterpret_cast<REAL32*>(p_odf_arg->data)) = vss;
@@ -545,6 +549,8 @@ CO_SDO_abortCode_t canopen::can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg)
   }
 
   switch (p_odf_arg->subIndex) {
+    case OD_2110_0_canRuntimeInfo_maxSubIndex:
+      break;
     case OD_2110_1_canRuntimeInfo_RXFrames:
       *(reinterpret_cast<UNSIGNED64*>(p_odf_arg->data)) =
           rti.rx.frames;
