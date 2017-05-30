@@ -40,6 +40,7 @@ class canopen: public canopen_errors {
 
     /*1010*/CO_SDO_abortCode_t store_parameters_callback(CO_ODF_arg_t *p_odf_arg);
     /*1011*/CO_SDO_abortCode_t restore_default_parameters_callback(CO_ODF_arg_t *p_odf_arg);
+    /*1012*/CO_SDO_abortCode_t cob_id_timestamp_callback(CO_ODF_arg_t *p_odf_arg);
     /*100a*/void set_manufacturer_software_version();
     /*1018-2*/void set_identity_product_code();
     /*1018-3*/void set_identity_revision_number();
@@ -283,6 +284,7 @@ class canopen: public canopen_errors {
     static void timer_rx_thread_wrapper(void *p);
     static CO_SDO_abortCode_t store_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t restore_default_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
+    static CO_SDO_abortCode_t cob_id_timestamp_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t program_control_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t temperature_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t voltage_callback_wrapper(CO_ODF_arg_t *p_odf_arg);

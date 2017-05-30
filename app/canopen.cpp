@@ -84,23 +84,23 @@ QueueHandle_t canopen::nmt_event_queue;
  */
 
 /* 1001 - Error register
- * todo ro, managed directly by stack
+ * ro, wird durch Stack verwaltet, Zugriff per getter/setter
  */
 
 /* 1003 - Pre-defined error field
- * todo managed directly by stack
+ * ro, wird durch Stack verwaltet, Zugriff per getter/setter
  */
 
 /* 1005 - COB-ID SYNC message
- * todo
+ * rw, wird durch Stack verwaltet
  */
 
 /* 1006 - Communication cycle period
- * todo
+ * rw, wird durch Stack verwaltet
  */
 
 /* 1007 - Synchronous window length
- * todo
+ * rw, wird durch Stack verwaltet
  */
 
 /* 1008 - Manufacturer device name
@@ -203,24 +203,42 @@ CO_SDO_abortCode_t canopen::restore_default_parameters_callback(CO_ODF_arg_t *p_
   return CO_SDO_AB_NONE;
 }
 
-/* 1012 - COB-ID timestamp
- * todo
+/** 1012 - COB-ID timestamp
+ *
+ * Keine Funktion. Minimalstimplementierung: Timestamp Producer wird abgelehnt
+ *
+ * @todo wird in einem Modul die Uhrzeit ben"otigt, so muss dieser Eintrag
+ * implementiert, die Busfilter entsprechend parametriert und die Uhrzeit COB ID
+ * empfangen werden.
  */
+CO_SDO_abortCode_t canopen::cob_id_timestamp_callback(CO_ODF_arg_t *p_odf_arg)
+{
+  if (p_odf_arg->reading == true) {
+    return CO_SDO_AB_NONE;
+  }
+
+  if (reinterpret_cast<u32*>(p_odf_arg->data) & 0x40000000) {
+    /* Timestamp Producer ablehnen */
+    return CO_SDO_AB_DATA_TRANSF;
+  }
+
+  return CO_SDO_AB_NONE;
+}
 
 /* 1014 - COB-ID EMCY
- * todo
+ * const, predefined value
  */
 
 /* 1015 - inhibit time EMCY
- * todo
+ * rw, wird durch Stack verwaltet
  */
 
 /* 1016 - Consumer heartbeat time
- * todo
+ * rw, wird durch Stack verwaltet
  */
 
 /* 1017 - Producer heartbeat time
- * managed directly by stack
+ * rw, wird durch Stack verwaltet
  */
 
 /* 1018-1 Vendor-ID
@@ -229,6 +247,9 @@ CO_SDO_abortCode_t canopen::restore_default_parameters_callback(CO_ODF_arg_t *p_
 
 /**
  * 1018-2 - Set Hardware Infos
+ *
+ * Diese Funktion "uberschreibt den Default aus dem OD Editor. Somit ist die
+ * tats"achliche Hardwaretype lesbar.
  */
 void canopen::set_identity_product_code()
 {
@@ -261,91 +282,44 @@ void canopen::set_identity_revision_number()
 }
 
 /* 1018-4 Serial number
- * todo
+ * todo, nicht implementiert
  */
 
 /* 1019 - Synchronous counter overflow value
- * todo
+ * rw, wird durch Stack verwaltet
  */
 
 /* 1020 - Verify configuration
- * todo
+ * rw, dient der Ablage eines Timestamp/Checksum durch den Master. Wird im Stack nicht
+ * verwendet.
  */
 
 /* 1026 - OS prompt
- * todo
+ * todo, nicht implementiert
  */
 
 /* 1029 - Error behavior
- * todo
+ * rw, wird durch Stack verwaltet
  */
 
 /* 1200 - SDO server parameter
- * todo managed directly by stack
+ * rw, wird durch Stack verwaltet
  */
 
-/* 1400 - RPDO communication parameter
- * todo
+/* ab 1400 - RPDO communication parameter
+ * rw, wird durch Stack verwaltet
  */
 
-/* 1401 - RPDO communication parameter
- * todo
+/* ab 1600 - RPDO mapping parameter
+ * rw, wird durch Stack verwaltet
  */
 
-/* 1402 - RPDO communication parameter
- * todo
+/* ab 1800 - TPDO communication parameter
+ * rw, wird durch Stack verwaltet
  */
 
-/* 1403 - RPDO communication parameter
- * todo
- */
-
-/* 1600 - RPDO mapping parameter
- * todo
- */
-
-/* 1601 - RPDO mapping parameter
- * todo
- */
-
-/* 1602 - RPDO mapping parameter
- * todo
- */
-
-/* 1603 - RPDO mapping parameter
- * todo
- */
-
-/* 1800 - TPDO communication parameter
- * todo
- */
-
-/* 1801 - TPDO communication parameter
- * todo
- */
-
-/* 1802 - TPDO communication parameter
- * todo
- */
-
-/* 1803 - TPDO communication parameter
- * todo
- */
-
-/* 1A00 - TPDO mapping parameter
- * todo
- */
-
-/* 1A01 - TPDO mapping parameter
- * todo
- */
-
-/* 1A02 - TPDO mapping parameter
- * todo
- */
-
-/* 1A03 - TPDO mapping parameter
- * todo
+/* ab 1A00 - TPDO mapping parameter
+ * rw, wird durch Stack verwaltet
  */
 
 /**
@@ -406,7 +380,7 @@ void canopen::set_program_software_id()
  */
 
 /* 2100 - Diagnose: Error status bits
- * todo managed directly by stack
+ * ro, wird durch Stack verwaltet
  */
 
 /** 2101 - Debug: CAN node ID aus Anwendung einstellen
@@ -470,22 +444,6 @@ u16 canopen::get_can_bit_rate()
 
   return bit_rate;
 }
-
-/* 2103 - Diagnose: SYNC counter
- * todo
- */
-
-/* 2104 - Diagnose: SYNC time:
- * todo
- */
-
-/* 2106 - Diagnose: Power-on counter:
- * todo
- */
-
-/* 2107 - Diagnose: Performance
- * todo
- */
 
 /** 2108 - Diagnose: Temperature
  *
@@ -602,25 +560,8 @@ CO_SDO_abortCode_t canopen::can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg)
   return CO_SDO_AB_NONE;
 }
 
-/* 2200 - Allgemein: LED mode
- * todo
- */
-
-
-/* 2201 - Allgemein: LED output 8 bit
- * todo
- */
-
-/* 2202 - Allgemein: LED flash
- * todo
- */
-
-/* 2210 - Allgemein: LED state
- * todo
- */
-
-/* 2220 - Allgemein: Energy save
- * todo
+/* ab 2200 - Allgemein
+ * Auf diese Eintr"age wird direkt aus den FBs zugegriffen
  */
 
 /* 4000 - Calibration:
@@ -638,7 +579,7 @@ CO_SDO_abortCode_t canopen::can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg)
  */
 
 /* ab 6000 - Profil
- * todo
+ * Auf diese Eintr"age wird direkt aus den FBs zugegriffen
  */
 
 /** @}*/
@@ -1182,6 +1123,7 @@ CO_ReturnError_t canopen::init(u8 addr, u32 interval)
   /* OD Callbacks */
   set_callback(OD_1010_storeParameters, store_parameters_callback_wrapper);
   set_callback(OD_1011_restoreDefaultParameters, restore_default_parameters_callback_wrapper);
+  set_callback(OD_1012_COB_IDTimestamp, cob_id_timestamp_callback_wrapper);
   set_callback(OD_1f51_programControl, program_control_callback_wrapper);
   set_callback(OD_2108_temperature, temperature_callback_wrapper);
   set_callback(OD_2109_voltage, voltage_callback_wrapper);
@@ -1334,6 +1276,11 @@ CO_SDO_abortCode_t canopen::store_parameters_callback_wrapper(CO_ODF_arg_t *p_od
 CO_SDO_abortCode_t canopen::restore_default_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
   return reinterpret_cast<canopen*>(p_odf_arg->object)->restore_default_parameters_callback(p_odf_arg);
+}
+
+CO_SDO_abortCode_t canopen::cob_id_timestamp_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+{
+  return reinterpret_cast<canopen*>(p_odf_arg->object)->cob_id_timestamp_callback(p_odf_arg);
 }
 
 CO_SDO_abortCode_t canopen::program_control_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
