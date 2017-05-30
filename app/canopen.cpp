@@ -217,7 +217,7 @@ CO_SDO_abortCode_t canopen::cob_id_timestamp_callback(CO_ODF_arg_t *p_odf_arg)
     return CO_SDO_AB_NONE;
   }
 
-  if (reinterpret_cast<u32*>(p_odf_arg->data) & 0x40000000) {
+  if (*reinterpret_cast<u32*>(p_odf_arg->data) & 0x40000000U) {
     /* Timestamp Producer ablehnen */
     return CO_SDO_AB_DATA_TRANSF;
   }
