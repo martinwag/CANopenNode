@@ -114,7 +114,9 @@ typedef enum{
      CO_CAN_ID_RPDO_4            = 0x500,   /**< 0x500, Default RPDO5 (+nodeID) */
      CO_CAN_ID_TSDO              = 0x580,   /**< 0x580, SDO response from server (+nodeID) */
      CO_CAN_ID_RSDO              = 0x600,   /**< 0x600, SDO request from client (+nodeID) */
-     CO_CAN_ID_HEARTBEAT         = 0x700    /**< 0x700, Heartbeat message */
+     CO_CAN_ID_HEARTBEAT         = 0x700,   /**< 0x700, Heartbeat message */
+     CO_CAN_ID_LSS_SLAVE         = 0x7E4,   /**< 0x700, LSS slave message */
+     CO_CAN_ID_LSS_MASTER        = 0x7E5    /**< 0x700, LSS master message */
 }CO_Default_CAN_ID_t;
 
 
