@@ -92,7 +92,10 @@
             || (CO_NO_RPDO < 1 || CO_NO_RPDO > 0x200)              \
             || (CO_NO_TPDO < 1 || CO_NO_TPDO > 0x200)              \
             || ODL_consumerHeartbeatTime_arrayLength      == 0     \
-            || ODL_errorStatusBits_stringLength           < 10
+            || ODL_errorStatusBits_stringLength           < 10     \
+            || CO_NO_LSS_SERVER                           >  1     \
+            || CO_NO_LSS_CLIENT                           >  1     \
+            || (CO_NO_LSS_SERVER > 0 && CO_NO_LSS_CLIENT > 0)
         #error Features from CO_OD.h file are not corectly configured for this project!
     #endif
 
@@ -110,8 +113,10 @@
     #define CO_RXCAN_SDO_SRV  (CO_RXCAN_RPDO+CO_NO_RPDO)              /*  start index for SDO server message (request) */
     #define CO_RXCAN_SDO_CLI  (CO_RXCAN_SDO_SRV+CO_NO_SDO_SERVER)     /*  start index for SDO client message (response) */
     #define CO_RXCAN_CONS_HB  (CO_RXCAN_SDO_CLI+CO_NO_SDO_CLIENT)     /*  start index for Heartbeat Consumer messages */
+    #define CO_RXCAN_LSS_SRV  (CO_RXCAN_CONS_HB+CO_NO_LSS_SERVER)     /*  index for LSS server message (request) */
+    #define CO_RXCAN_LSS_CLI  (CO_NO_LSS_SERVER+CO_NO_LSS_CLIENT)     /*  index for LSS client message (response) */
     /* total number of received CAN messages */
-    #define CO_RXCAN_NO_MSGS (1+CO_NO_SYNC+CO_NO_RPDO+CO_NO_SDO_SERVER+CO_NO_SDO_CLIENT+CO_NO_HB_CONS)
+    #define CO_RXCAN_NO_MSGS (1+CO_NO_SYNC+CO_NO_RPDO+CO_NO_SDO_SERVER+CO_NO_SDO_CLIENT+CO_NO_HB_CONS+CO_NO_LSS_SERVER+CO_NO_LSS_CLIENT)
 
     #define CO_TXCAN_NMT       0                                      /*  index for NMT master message */
     #define CO_TXCAN_SYNC      CO_TXCAN_NMT+CO_NO_NMT_MASTER          /*  index for SYNC message */
@@ -120,8 +125,10 @@
     #define CO_TXCAN_SDO_SRV  (CO_TXCAN_TPDO+CO_NO_TPDO)              /*  start index for SDO server message (response) */
     #define CO_TXCAN_SDO_CLI  (CO_TXCAN_SDO_SRV+CO_NO_SDO_SERVER)     /*  start index for SDO client message (request) */
     #define CO_TXCAN_HB       (CO_TXCAN_SDO_CLI+CO_NO_SDO_CLIENT)     /*  index for Heartbeat message */
+    #define CO_TXCAN_LSS_SRV  (CO_TXCAN_HB+CO_NO_LSS_SERVER)          /*  index index for LSS server message (response) */
+    #define CO_TXCAN_LSS_CLI  (CO_NO_LSS_SERVER+CO_NO_LSS_CLIENT)     /*  index index for LSS client message (request) */
     /* total number of transmitted CAN messages */
-    #define CO_TXCAN_NO_MSGS (CO_NO_NMT_MASTER+CO_NO_SYNC+CO_NO_EMERGENCY+CO_NO_TPDO+CO_NO_SDO_SERVER+CO_NO_SDO_CLIENT+1)
+    #define CO_TXCAN_NO_MSGS (CO_NO_NMT_MASTER+CO_NO_SYNC+CO_NO_EMERGENCY+CO_NO_TPDO+CO_NO_SDO_SERVER+CO_NO_SDO_CLIENT+1+CO_NO_LSS_SERVER+CO_NO_LSS_CLIENT)
 
 
 #ifdef CO_USE_GLOBALS

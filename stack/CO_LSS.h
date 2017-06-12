@@ -74,15 +74,13 @@ extern "C" {
  */
 
 /**
- * @defgroup CO_LSS_protocol LSS Protocols
- * @{
+ * LSS protocol command specifiers
+ *
  * The LSS protocols are executed between the LSS master device and the LSS
  * slave device(s) to implement the LSS services. Some LSS protocols require
  * a sequence of CAN messages.
- */
-
-/**
- * Switch mode protocols
+ *
+ * As identifying method only "LSS fastscan" is supported.
  */
 typedef enum {
     CO_LSS_SWITCH_STATE_GLOBAL      = 0x04U, /**< Switch state global protocol */
@@ -91,39 +89,27 @@ typedef enum {
     CO_LSS_SWITCH_STATE_SEL_REV     = 0x42U, /**< Switch state selective protocol - Revision number */
     CO_LSS_SWITCH_STATE_SEL_SERIAL  = 0x43U, /**< Switch state selective protocol - Serial number */
     CO_LSS_SWITCH_STATE_SEL         = 0x44U, /**< Switch state selective protocol - Slave response */
-} CO_LSS_switch_t;
-
-/**
- * Configuration protocols
- */
-typedef enum {
     CO_LSS_CFG_NODE_ID              = 0x11U, /**< Configure node ID protocol */
     CO_LSS_CFG_BIT_TIMING           = 0x13U, /**< Configure bit timing parameter protocol */
     CO_LSS_CFG_ACTIVATE_BIT_TIMING  = 0x15U, /**< Activate bit timing parameter protocol */
     CO_LSS_CFG_STORE                = 0x17U, /**< Store configuration protocol */
-} CO_LSS_config_t;
-
-/**
- * Inquiry protocols
- */
-typedef enum {
     CO_LSS_INQUIRE_VENDOR           = 0x5AU, /**< Inquire identity vendor-ID protocol */
     CO_LSS_INQUIRE_PRODUCT          = 0x5BU, /**< Inquire identity product-code protocol */
     CO_LSS_INQUIRE_REV              = 0x5CU, /**< Inquire identity revision-number protocol */
     CO_LSS_INQUIRE_SERIAL           = 0x5DU, /**< Inquire identity serial-number protocol */
     CO_LSS_INQUIRE_NODE_ID          = 0x5EU, /**< Inquire node-ID protocol */
-} CO_LSS_inquire_t;
+    CO_LSS_IDENT_FASTSCAN           = 0x51U  /**< LSS Fastscan protocol */
+} CO_LSS_cs_t;
 
 /**
- * Identification protocols
- *
- * Only LSS Fastscan is currently supported.
- */
-typedef enum {
-    CO_LSS_IDENT_FASTSCAN           = 0x51U  /**< LSS Fastscan protocol */
-} CO_LSS_identify_t;
-
-/** @} */
+ * Macro to get service type from command specifier
+ * @{*/
+#define CO_LSS_cs_serviceIsSwitchStateGlobal(cs) (cs == CO_LSS_SWITCH_STATE_GLOBAL)
+#define CO_LSS_cs_serviceIsSwitchStateSelective(cs) (cs <= CO_LSS_SWITCH_STATE_SEL_VENDOR && cs >= CO_LSS_SWITCH_STATE_SEL)
+#define CO_LSS_cs_serviceIsConfig(cs) (cs <= CO_LSS_CFG_NODE_ID && cs >= CO_LSS_CFG_STORE)
+#define CO_LSS_cs_serviceIsInquire(cs) (cs <= CO_LSS_INQUIRE_VENDOR && cs >= CO_LSS_INQUIRE_NODE_ID)
+#define CO_LSS_cs_serviceIsIdentFastscan(cs) (cs == CO_LSS_IDENT_FASTSCAN)
+/**@}*/
 
 /**
  * The LSS address is a 128 bit number, uniquely identifying each node. It
@@ -146,11 +132,40 @@ typedef struct {
  * - Final: Pseudo state, indicating the deactivation of the FSA.
  */
 typedef enum {
-    CO_LSS_STATE_INITIAL = 0,                /**< LSS FSA initial state*/
-    CO_LSS_STATE_WAITING,                    /**< LSS FSA waiting for requests*/
-    CO_LSS_STATE_CONFIGURATION,              /**< LSS FSA waiting for configuration*/
-    CO_LSS_STATE_FINAL                       /**< LSS FSA stopped */
+    CO_LSS_STATE_WAITING = 0,                /**< LSS FSA waiting for requests*/
+    CO_LSS_STATE_CONFIGURATION = 1,          /**< LSS FSA waiting for configuration*/
 } CO_LSS_state_t;
+
+/**
+ * Definition of table_index for /CiA301/ bit timing table
+ */
+typedef enum {
+    CO_LSS_BIT_TIMING_1000 = 0,              /**< 1000kbit/s */
+    CO_LSS_BIT_TIMING_800  = 1,              /**< 800kbit/s */
+    CO_LSS_BIT_TIMING_500  = 2,              /**< 500kbit/s */
+    CO_LSS_BIT_TIMING_250  = 3,              /**< 250kbit/s */
+    CO_LSS_BIT_TIMING_125  = 4,              /**< 125kbit/s */
+    /* reserved            = 5 */
+    CO_LSS_BIT_TIMING_50   = 6,              /**< 50kbit/s */
+    CO_LSS_BIT_TIMING_20   = 7,              /**< 20kbit/s */
+    CO_LSS_BIT_TIMING_10   = 8,              /**< 10kbit/s */
+    CO_LSS_BIT_TIMING_AUTO = 9,              /**< Automatic bit rate detection */
+} CO_LSS_bitTimingTable_t;
+
+/**
+ * Macro to check if index contains valid bit timing
+ */
+#define CO_LSS_bitTimingValid(index) (index != 5 && (index >= CO_LSS_BIT_TIMING_1000 && index <= CO_LSS_BIT_TIMING_AUTO))
+
+/**
+ * Value for invalid / not set node id
+ */
+#define CO_LSS_nodeIdNotSet 0xff
+
+/**
+ * Macro to check if node id is valid
+ */
+#define CO_LSS_nodeIdValid(nid) ((nid >= 1 && nid <= 0x7F) || nid == 0xFF)
 
 
 #ifdef __cplusplus

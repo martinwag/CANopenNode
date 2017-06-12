@@ -62,15 +62,19 @@ extern "C" {
  * LSS slave object.
  */
 typedef struct{
-    uint8_t               lssState;         /**< #CO_LSS_state_t */
-    CO_LSS_address_t      lssAddress;       /**< From todo */
+    CO_LSS_address_t        lssAddress;       /**< From #CO_LSSslave_init */
+    CO_LSS_state_t          lssState;         /**< #CO_LSS_state_t */
+    CO_LSS_address_t        lssSelect;        /**< Received LSS Address */
 
-    uint8_t               activeBitRate;    /**< Bit rate, used at the CAN interface */
-    uint8_t               pendingBitRate;   /**< Bit rate value that is temporarily configured in volatile memory */
-    uint8_t               persistentBitRate;/**< Bit rate value that is stored to LSS slaves NVM */
-    uint8_t               activeNodeID;     /**< Node ID used at the CAN interface */
-    uint8_t               pendingNodeID;    /**< Node ID that is temporarily configured in volatile memory */
-    uint8_t               persistentNodeID; /**< Node ID that is stored to LSS slaves NVM */
+    CO_LSS_bitTimingTable_t activeBitRate;    /**< Bit rate, used at the CAN interface */
+    CO_LSS_bitTimingTable_t pendingBitRate;   /**< Bit rate value that is temporarily configured in volatile memory */
+    CO_LSS_bitTimingTable_t persistentBitRate;/**< Bit rate value that is stored to LSS slaves NVM */
+    uint8_t                 activeNodeID;     /**< Node ID used at the CAN interface */
+    uint8_t                 pendingNodeID;    /**< Node ID that is temporarily configured in volatile memory */
+    uint8_t                 persistentNodeID; /**< Node ID that is stored to LSS slaves NVM */
+
+    CO_CANmodule_t         *CANdevTx;         /**< From #CO_LSSslave_init() */
+    CO_CANtx_t             *TXbuff;           /**< CAN transmit buffer */
 }CO_LSSslave_t;
 
 /**
@@ -78,13 +82,33 @@ typedef struct{
  *
  * Function must be called in the communication reset section. todo?
  *
+ * @param LSSslave
+ * @param lssAddress
+ * @param activeBitRate
+ * @param persistentBitRate
+ * @param activeNodeId
+ * @param persistentNodeID
+ * @param CANdevRx
+ * @param CANdevRxIdx
+ * @param CANidLssMaster
+ * @param CANdevTx
+ * @param CANdevTxIdx
+ * @param CANidLssSlave
  * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT. todo
  */
 CO_ReturnError_t CO_LSSslave_init(
         CO_LSSslave_t          *LSSslave,
         CO_LSS_address_t        lssAddress,
+        uint8_t                 activeBitRate,
         uint8_t                 persistentBitRate,
-        uint8_t                 persistentNodeID);
+        uint8_t                 activeNodeId,
+        uint8_t                 persistentNodeID,
+        CO_CANmodule_t         *CANdevRx,
+        uint16_t                CANdevRxIdx,
+        uint32_t                CANidLssMaster,
+        CO_CANmodule_t         *CANdevTx,
+        uint16_t                CANdevTxIdx,
+        uint32_t                CANidLssSlave);
 
 /**
  * Process LSS communication
