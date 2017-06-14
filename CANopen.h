@@ -89,6 +89,9 @@ extern "C" {
 #if CO_NO_TRACE > 0
     #include "CO_trace.h"
 #endif
+#if CO_NO_LSS_SERVER == 1
+    #include "CO_LSSslave.h"
+#endif
 
 
 /**
@@ -133,6 +136,12 @@ typedef struct{
     CO_RPDO_t          *RPDO[CO_NO_RPDO];/**< RPDO objects */
     CO_TPDO_t          *TPDO[CO_NO_TPDO];/**< TPDO objects */
     CO_HBconsumer_t    *HBcons;         /**<  Heartbeat consumer object*/
+#if CO_NO_LSS_SERVER == 1
+    CO_LSSslave_t      *LSSslave;       /**< LSS server/slave object */
+#endif
+#if CO_NO_LSS_CLIENT == 1
+    CO_LSSmaster_t     *LSSmaster;      /**< LSS master/client object */
+#endif
 #if CO_NO_SDO_CLIENT == 1
     CO_SDOclient_t     *SDOclient;      /**< SDO client object */
 #endif
@@ -168,6 +177,12 @@ typedef struct{
  * Initialize CANopen stack.
  *
  * Function must be called in the communication reset section.
+ *
+ * @remark If @ref CO_LSS slave is enabled, the node can take part in node ID assignment
+ * without a valid node ID. In this case, set nodeID to @ref CO_LSS_NODE_ID_ASSIGNMENT.
+ * Then only the LSS server is started. Other CANopen functions are not enabled and
+ * therefore can't be used!
+ * @todo just link to usage example in @ref CO_LSS?
  *
  * @param CANbaseAddress Address of the CAN module, passed to CO_CANmodule_init().
  * @param nodeId Node ID of the CANopen device (1 ... 127).
