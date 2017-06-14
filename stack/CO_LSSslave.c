@@ -45,11 +45,27 @@
 
 
 #include "CO_driver.h"
-#include "CO_LSSslave.h"
 #include "CO_SDO.h"
+#include "CO_Emergency.h"
+#include "CO_NMT_Heartbeat.h"
+#include "CO_LSSslave.h"
 
 /*
- * Handle service "switch state global"
+ * Helper function - Check if two LSS addresses are equal
+ */
+static bool CO_LSSslave_addressEqual(CO_LSS_address_t *a1, CO_LSS_address_t *a2)
+{
+  if (a1->productCode == a2->productCode &&
+      a1->revisionNumber == a2->revisionNumber &&
+      a1->serialNumber == a2->serialNumber &&
+      a1->vendorID == a2->vendorID) {
+      return true;
+  }
+  return false;
+}
+
+/*
+ * Helper function - Handle service "switch state global"
  */
 static void CO_LSSslave_serviceSwitchStateGlobal(
     CO_LSSslave_t *LSSslave,
@@ -57,14 +73,11 @@ static void CO_LSSslave_serviceSwitchStateGlobal(
     uint8_t mode)
 {
     switch (mode) {
-        case 0:
+        case CO_LSS_STATE_WAITING:
             LSSslave->lssState = CO_LSS_STATE_WAITING;
-            LSSslave->lssSelect.productCode = 0;
-            LSSslave->lssSelect.revisionNumber = 0;
-            LSSslave->lssSelect.serialNumber = 0;
-            LSSslave->lssSelect.vendorID = 0;
+            CO_memset((uint8_t*)&LSSslave->lssSelect, 0, sizeof(LSSslave->lssSelect));
             break;
-        case 1:
+        case CO_LSS_STATE_CONFIGURATION:
             LSSslave->lssState = CO_LSS_STATE_CONFIGURATION;
             break;
         default:
@@ -73,7 +86,7 @@ static void CO_LSSslave_serviceSwitchStateGlobal(
 }
 
 /*
- * Handle service "switch state selective"
+ * Helper function - Handle service "switch state selective"
  */
 static void CO_LSSslave_serviceSwitchStateSelective(
     CO_LSSslave_t *LSSslave,
@@ -97,9 +110,13 @@ static void CO_LSSslave_serviceSwitchStateSelective(
         case CO_LSS_SWITCH_STATE_SEL_SERIAL:
             LSSslave->lssSelect.serialNumber = value;
 
-            if (LSSslave->lssAddress == LSSslave->lssSelect) {
+            if (CO_LSSslave_addressEqual(&LSSslave->lssAddress, &LSSslave->lssSelect)) {
                 LSSslave->lssState = CO_LSS_STATE_CONFIGURATION;
-                //todo lss response
+
+                /* send confirmation */
+                LSSslave->TXbuff->data[0] = CO_LSS_SWITCH_STATE_SEL;
+                CO_memset(&LSSslave->TXbuff->data[1], 0, 7);
+                CO_CANsend(LSSslave->CANdevTx, LSSslave->TXbuff);
             }
             break;
         default:
@@ -108,7 +125,7 @@ static void CO_LSSslave_serviceSwitchStateSelective(
 }
 
 /*
- * Handle service "configure"
+ * Helper function - Handle service "configure"
  *
  * values inside message have different meaning, depending on the selected
  * configuration type
@@ -118,43 +135,77 @@ static void CO_LSSslave_serviceConfig(
     CO_LSS_cs_t service,
     const CO_CANrxMsg_t *msg)
 {
+    uint8_t nid;
+    uint8_t tableSelector;
+    uint8_t tableIndex;
+    uint8_t errorCode;
+    uint16_t switchDelay;
+
     if(LSSslave->lssState != CO_LSS_STATE_WAITING) {
         return;
     }
 
     switch (service) {
         case CO_LSS_CFG_NODE_ID:
-            uint8_t nid = *msg->data[1];
+            nid = msg->data[1];
 
             if (CO_LSS_nodeIdValid(nid)) {
-              LSSslave->pendingNodeID = nid;
-              //todo lss response success
-            } else {
-              //todo lss response nid out of range
+                LSSslave->pendingNodeID = nid;
+                errorCode = CO_LSS_CFG_NODE_ID_OK;
             }
+            else {
+                errorCode = CO_LSS_CFG_NODE_ID_OUT_OF_RANGE;
+            }
+
+            /* send confirmation */
+            LSSslave->TXbuff->data[0] = CO_LSS_CFG_NODE_ID;
+            LSSslave->TXbuff->data[1] = errorCode;
+            /* we do not use spec-error, always 0 */
+            CO_memset(&LSSslave->TXbuff->data[2], 0, 6);
+            CO_CANsend(LSSslave->CANdevTx, LSSslave->TXbuff);
             break;
         case CO_LSS_CFG_BIT_TIMING:
-            uint8_t tableSelector = *msg->data[1];
-            uint8_t tableIndex = *msg->data[2];
+            tableSelector = msg->data[1];
+            tableIndex = msg->data[2];
 
-            if (tableSelector != 0) {
-              /* we currently only support CiA301 bit timing table */
-              //todo lss response ts out of range
-              return;
+            if (tableSelector==0 && CO_LSS_bitTimingValid(tableIndex)) {
+                LSSslave->pendingBitRate = CO_LSS_bitTimingTableLookup[tableIndex];
+                errorCode = CO_LSS_CFG_BIT_TIMING_OK;
+            }
+            else {
+                /* we currently only support CiA301 bit timing table */
+                errorCode = CO_LSS_CFG_BIT_TIMING_OUT_OF_RANGE;
             }
 
-            if (CO_LSS_bitTimingValid(tableIndex)) {
-                LSSslave->pendingBitRate = tableIndex;
-            }
+            /* send confirmation */
+            LSSslave->TXbuff->data[0] = CO_LSS_CFG_BIT_TIMING;
+            LSSslave->TXbuff->data[1] = errorCode;
+            /* we do not use spec-error, always 0 */
+            CO_memset(&LSSslave->TXbuff->data[2], 0, 6);
+            CO_CANsend(LSSslave->CANdevTx, LSSslave->TXbuff);
+
+
+            //todo callback check baud rate valid
+
+
+
             break;
         case CO_LSS_CFG_ACTIVATE_BIT_TIMING:
             /* this needs all slaves on the network to be in this state. However,
              * it's in the responsibility of the master to ensure that. */
-            uint16_t switchDelay = CO_getUint16(msg->data[1]);
+            switchDelay = CO_getUint16(&msg->data[1]);
             //todo switch bit rate
             break;
         case CO_LSS_CFG_STORE:
-            //todo initiate writing persistent memory
+            //todo initiate writing persistent memory. Bit rate -must- be
+            //successfully stored, otherwise mayhem after reboot
+
+            /* send confirmation */
+            LSSslave->TXbuff->data[0] = CO_LSS_CFG_STORE;
+            LSSslave->TXbuff->data[1] = CO_LSS_CFG_STORE_NOT_SUPPORTED;
+            /* we do not use spec-error, always 0 */
+            CO_memset(&LSSslave->TXbuff->data[2], 0, 6);
+            CO_CANsend(LSSslave->CANdevTx, LSSslave->TXbuff);
             break;
         default:
             break;
@@ -162,39 +213,46 @@ static void CO_LSSslave_serviceConfig(
 }
 
 /*
- * Handle service "inquire"
+ * Helper function - Handle service "inquire"
  */
 static void CO_LSSslave_serviceInquire(
     CO_LSSslave_t *LSSslave,
     CO_LSS_cs_t service)
 {
+    uint32_t value;
+
     if(LSSslave->lssState != CO_LSS_STATE_WAITING) {
         return;
     }
 
     switch (service) {
         case CO_LSS_INQUIRE_VENDOR:
-            //todo generate response
+            value = LSSslave->lssAddress.vendorID;
             break;
         case CO_LSS_INQUIRE_PRODUCT:
-            //todo generate response
+            value = LSSslave->lssAddress.productCode;
             break;
         case CO_LSS_INQUIRE_REV:
-            //todo generate response
+            value = LSSslave->lssAddress.revisionNumber;
             break;
         case CO_LSS_INQUIRE_SERIAL:
-            //todo generate response
+            value = LSSslave->lssAddress.serialNumber;
             break;
         case CO_LSS_INQUIRE_NODE_ID:
-            //todo generate response
+            value = LSSslave->activeNodeID; //todo this is byte value, is this swapped to the correct position?
             break;
         default:
-            break;
+            return;
     }
+    /* send response */
+    LSSslave->TXbuff->data[0] = service;
+    CO_setUint32(&LSSslave->TXbuff->data[1], value);
+    CO_memset(&LSSslave->TXbuff->data[5], 0, 4);
+    CO_CANsend(LSSslave->CANdevTx, LSSslave->TXbuff);
 }
 
 /*
- * Handle service "identify"
+ * Helper function - Handle service "identify"
  */
 static void CO_LSSslave_serviceIdentFastscan(
     CO_LSSslave_t *LSSslave,
@@ -224,14 +282,14 @@ static void CO_LSSslave_receive(void *object, const CO_CANrxMsg_t *msg)
     LSSslave = (CO_LSSslave_t*)object;   /* this is the correct pointer type of the first argument */
 
     if(msg->DLC == 8){
-        cs = *msg->data[0];
+        cs = msg->data[0];
 
         if (CO_LSS_cs_serviceIsSwitchStateGlobal(cs)) {
-            uint8_t mode = *msg->data[1];
+            uint8_t mode = msg->data[1];
             CO_LSSslave_serviceSwitchStateGlobal(LSSslave, cs, mode);
         }
         else if (CO_LSS_cs_serviceIsSwitchStateSelective(cs)) {
-            uint32_t value = CO_getUint32(msg->data[1]);
+            uint32_t value = CO_getUint32(&msg->data[1]);
             CO_LSSslave_serviceSwitchStateSelective(LSSslave, cs, value);
         }
         else if (CO_LSS_cs_serviceIsConfig(cs)) {
@@ -242,12 +300,13 @@ static void CO_LSSslave_receive(void *object, const CO_CANrxMsg_t *msg)
         }
         else if (CO_LSS_cs_serviceIsIdentFastscan(cs)) {
             /* we only support fastscan */
-            uint32_t idNumber = CO_getUint32(msg->data[1]);
-            uint8_t bitCheck = *msg->data[5];
-            uint8_t lssSub = *msg->data[6];
-            uint8_t lssNext = *msg->data[7];
+            uint32_t idNumber = CO_getUint32(&msg->data[1]);
+            uint8_t bitCheck = msg->data[5];
+            uint8_t lssSub = msg->data[6];
+            uint8_t lssNext = msg->data[7];
             CO_LSSslave_serviceIdentFastscan(LSSslave, cs, idNumber, bitCheck, lssSub, lssNext);
-        } else {
+        }
+        else {
             /* Unsupported commands are dropped */
         }
     }
@@ -258,9 +317,7 @@ static void CO_LSSslave_receive(void *object, const CO_CANrxMsg_t *msg)
 CO_ReturnError_t CO_LSSslave_init(
         CO_LSSslave_t          *LSSslave,
         CO_LSS_address_t        lssAddress,
-        uint8_t                 activeBitRate,
-        uint8_t                 persistentBitRate,
-        uint8_t                 activeNodeId,
+        uint16_t                persistentBitRate,
         uint8_t                 persistentNodeID,
         CO_CANmodule_t         *CANdevRx,
         uint16_t                CANdevRxIdx,
@@ -271,22 +328,17 @@ CO_ReturnError_t CO_LSSslave_init(
 {
     /* verify arguments */
     if (LSSslave==NULL || CANdevRx==NULL || CANdevTx==NULL ||
-        !CO_LSS_nodeIdValid(persistentNodeID) || !CO_LSS_nodeIdValid(activeNodeId) ||
-        !CO_LSS_bitTimingValid(persistentBitRate) || !CO_LSS_bitTimingValid(activeBitRate)) {
+        !CO_LSS_nodeIdValid(persistentNodeID)) {
         return CO_ERROR_ILLEGAL_ARGUMENT;
     }
 
-    LSSslave->lssAddress = lssAddress;
+    CO_memcpy((uint8_t*)&LSSslave->lssAddress, (uint8_t*)&lssAddress, sizeof(LSSslave->lssAddress));
     LSSslave->lssState = CO_LSS_STATE_WAITING;
-    LSSslave->lssSelect.productCode = 0;
-    LSSslave->lssSelect.revisionNumber = 0;
-    LSSslave->lssSelect.serialNumber = 0;
-    LSSslave->lssSelect.vendorID = 0;
+    CO_memset((uint8_t*)&LSSslave->lssSelect, 0, sizeof(LSSslave->lssSelect));
 
-    LSSslave->activeBitRate = activeBitRate;
-    LSSslave->persistentBitRate = persistentBitRate;
-    LSSslave->activeNodeID = activeNodeId;
-    LSSslave->persistentNodeID = persistentNodeID;
+    LSSslave->pendingBitRate = persistentBitRate;
+    LSSslave->pendingNodeID = persistentNodeID;
+    LSSslave->activeNodeID = 0;
 
     /* configure LSS CAN Master message reception */
     CO_CANrxBufferInit(
@@ -329,10 +381,25 @@ void CO_LSSslave_initPersistanceCallback(
 /******************************************************************************/
 CO_NMT_reset_cmd_t CO_LSSslave_process(
         CO_LSSslave_t          *LSSslave,
-        const uint8_t          *activeBitRate,
-        const uint8_t          *activeNodeId)
+        uint16_t                activeBitRate,
+        uint8_t                 activeNodeId,
+        uint16_t               *pendingBitRate,
+        uint8_t                *pendingNodeId)
 {
+    CO_NMT_reset_cmd_t reset = CO_RESET_NOT;
 
-  return CO_RESET_NOT;
+    LSSslave->activeNodeID = activeNodeId;
+    *pendingBitRate = LSSslave->pendingBitRate;
+    *pendingNodeId = LSSslave->pendingNodeID;
+
+//todo not if different, but after switch state (page 15)
+//    if (activeBitRate != *pendingBitRate) {
+//        /* request CAN to change bit rate. In CANopenNode bit rate is set while
+//         * initiating NMT, so give NMT a reset communication command. */
+//        reset = CO_RESET_COMM;
+//    }
+//todo start NMT when node id change from 0xff to valid
+
+    return reset;
 }
 

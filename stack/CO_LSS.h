@@ -112,6 +112,31 @@ typedef enum {
 /**@}*/
 
 /**
+ * Error codes for Configure node ID protocol
+ */
+typedef enum {
+    CO_LSS_CFG_NODE_ID_OK = 0x00U,          /**< Protocol successfully completed */
+    CO_LSS_CFG_NODE_ID_OUT_OF_RANGE = 0x01U /**< NID out of range */
+} CO_LSS_cfgNodeId_t;
+
+/**
+ * Error codes for Configure bit timing parameters protocol
+ */
+typedef enum {
+    CO_LSS_CFG_BIT_TIMING_OK = 0x00U,          /**< Protocol successfully completed */    //!< CO_LSS_CFG_BIT_TIMING_OK
+    CO_LSS_CFG_BIT_TIMING_OUT_OF_RANGE = 0x01U /**< Bit timing / Bit rate not supported *///!< CO_LSS_CFG_BIT_TIMING_OUT_OF_RANGE
+} CO_LSS_cfgBitTiming_t;
+
+/**
+ * Error codes for Store configuration protocol
+ */
+typedef enum {
+    CO_LSS_CFG_STORE_OK = 0x00U,            /**< Protocol successfully completed */
+    CO_LSS_CFG_STORE_NOT_SUPPORTED = 0x01U, /**< Store configuration not supported */
+    CO_LSS_CFG_STORE_FAILED = 0x02U         /**< Storage media access error */
+} CO_LSS_cfgStore_t;
+
+/**
  * The LSS address is a 128 bit number, uniquely identifying each node. It
  * consists of the values in object 0x1018.
  */
@@ -153,14 +178,32 @@ typedef enum {
 } CO_LSS_bitTimingTable_t;
 
 /**
+ * Lookup table for conversion between bit timing table and numerical
+ * bit rate
+ */
+static const uint16_t CO_LSS_bitTimingTableLookup[]  = {
+     1000,
+     800,
+     500,
+     250,
+     125,
+     0,
+     50,
+     20,
+     10,
+     0
+};
+
+/**
  * Macro to check if index contains valid bit timing
  */
 #define CO_LSS_bitTimingValid(index) (index != 5 && (index >= CO_LSS_BIT_TIMING_1000 && index <= CO_LSS_BIT_TIMING_AUTO))
 
 /**
- * Value for invalid / not set node id
+ * Invalid node ID triggers node ID assignment
  */
-#define CO_LSS_nodeIdNotSet 0xff
+#define CO_LSS_NODE_ID_ASSIGNMENT 0xFFU 
+
 
 /**
  * Macro to check if node id is valid
