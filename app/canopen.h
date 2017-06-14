@@ -32,7 +32,8 @@
 class canopen: public canopen_errors {
   private:
     CO_NMT_reset_cmd_t reset;         /*!< Resetanforderung */
-    u8 addr;                          /*!< eigene Moduladresse */
+    u8 nid;                           /*!< Eigene CANopen Node ID */
+    static const u16 bit = 1000;      /*!< CANopen Bitrate */
     class od_storage od_storage;      /*!< OD Parameter */
     static const u8 main_interval = 50; /*!< ms, max. Wartezeit auf Events in process() */
     u32 worker_interval;              /*!< CO Thread Intervall */
@@ -41,18 +42,12 @@ class canopen: public canopen_errors {
     /*1010*/CO_SDO_abortCode_t store_parameters_callback(CO_ODF_arg_t *p_odf_arg);
     /*1011*/CO_SDO_abortCode_t restore_default_parameters_callback(CO_ODF_arg_t *p_odf_arg);
     /*1012*/CO_SDO_abortCode_t cob_id_timestamp_callback(CO_ODF_arg_t *p_odf_arg);
-    /*100a*/void set_manufacturer_software_version();
-    /*1018-2*/void set_identity_product_code();
-    /*1018-3*/void set_identity_revision_number();
     /*1f51*/CO_SDO_abortCode_t program_control_callback(CO_ODF_arg_t *p_odf_arg);
-    /*1f56*/void set_program_software_id();
-    /*2101*/void set_can_node_id(u8 id);
-    /*2101*/u8 get_can_node_id();
-    /*2102*/void set_can_bit_rate(u16 bit_rate);
-    /*2102*/u16 get_can_bit_rate();
     /*2108*/CO_SDO_abortCode_t temperature_callback(CO_ODF_arg_t *p_odf_arg);
     /*2109*/CO_SDO_abortCode_t voltage_callback(CO_ODF_arg_t *p_odf_arg);
     /*2110*/CO_SDO_abortCode_t can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg);
+
+    void od_set_defaults(void);
 
     /* Diese Callbacks m"ussen Klassenmethoden sein, da der Stack Callback
      * keinen Pointer f"ur die Instanz zur Verf"ugung stellt. Diese sind daher
@@ -251,13 +246,29 @@ class canopen: public canopen_errors {
     /** @}*/
 
     /**
+     * G"ultige CANopen Node ID bestimmen.
+     *
+     * Diese wird entweder vom NVM gelesen oder durch das Fastscan Verfahren
+     * durch den Master gesetzt
+     *
+     * @remark Diese Funktion blockiert bis eine g"ultige Adresse (1..127)
+     * bestimmt wurde.
+     *
+     * @param p_nid [in] [out] Adresse durch Applikation vorgeben, "Ubersteuert 
+     * NVM. Bestimmte Adresse.
+     * @return CO_ERROR_NO wenn erfolgreich
+     */
+    CO_ReturnError_t get_node_id(u8 *p_nid);
+
+    /**
      * CANopen Stack initialisieren
      *
-     * @param addr CANopen Busadresse, 0 = keine Vorgabe durch Applikation
+     * @param nid CANopen Node ID. Diese kann vorgegeben oder durch #get_node_id()
+     * bestimmt werden
      * @param interval Abarbeitungsintervall f"ur zeitkritische CANopen Komponenten
      * @return CO_ERROR_NO wenn erfolgreich
      */
-    CO_ReturnError_t init(u8 addr, u32 interval);
+    CO_ReturnError_t init(u8 nid, u32 interval);
 
     /**
      * CANopen Stack deinitialisieren

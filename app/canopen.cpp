@@ -107,23 +107,9 @@ QueueHandle_t canopen::nmt_event_queue;
  * const, predefined value
  */
 
-/** 100a - Manufacturer software version anhand dem in Git vorhandenen Versionsstring
- *
- * @param mod_type Modultyp
- * @param hw_rev HW Revision
+/* 100a - Manufacturer software version
+ * const, wird beim Startup gesetzt
  */
-void canopen::set_manufacturer_software_version()
-{
-  const char *p_version;
-
-  p_version = globals.get_app_version_string();
-
-  CO_LOCK_OD();
-  (void)snprintf(OD_manufacturerSoftwareVersion,
-                 ODL_manufacturerSoftwareVersion_stringLength,
-                 p_version);
-  CO_UNLOCK_OD();
-}
 
 /** 1010 - Store parameters
  *
@@ -245,41 +231,15 @@ CO_SDO_abortCode_t canopen::cob_id_timestamp_callback(CO_ODF_arg_t *p_odf_arg)
  * ro, predefined value
  */
 
-/**
+/*
  * 1018-2 - Set Hardware Infos
- *
- * Diese Funktion "uberschreibt den Default aus dem OD Editor. Somit ist die
- * tats"achliche Hardwaretype lesbar.
+ * ro, wird beim Startup gesetzt
  */
-void canopen::set_identity_product_code()
-{
-  u8 hw_rev;
-  u16 mod_type;
 
-  mod_type = globals.get_type();
-  hw_rev = globals.get_hw_rev();
-
-  CO_LOCK_OD();
-  OD_identity.productCode = hw_rev << 16 | mod_type;
-  CO_UNLOCK_OD();
-}
-
-/**
- * 1018-3 - Set Firmwareversion anhand der in Git vorhandenen Versionsnummern
+/*
+ * 1018-3 - Set Firmwareversion
+ * ro, wird beim Startup gesetzt
  */
-void canopen::set_identity_revision_number()
-{
-  u8 main;
-  u8 minor;
-  u8 bugfix;
-  u8 build;
-
-  globals.get_app_version(&main, &minor, &bugfix, &build);
-
-  CO_LOCK_OD();
-  OD_identity.revisionNumber = (u32)(main << 24 | minor << 16 | bugfix << 8 | build);
-  CO_UNLOCK_OD();
-}
 
 /* 1018-4 Serial number
  * todo, nicht implementiert
@@ -339,7 +299,7 @@ CO_SDO_abortCode_t canopen::program_control_callback(CO_ODF_arg_t *p_odf_arg)
 
   control = static_cast<bootloader_program_control_t>(*(p_odf_arg->data));
 
-  state = bootloader_request(control, addr);
+  state = bootloader_request(control, nid);
   switch (state) {
     case BOOTLAODER_TIMEOUT:
       return CO_SDO_AB_TIMEOUT; //todo ist dieser Errorcode hier OK? Ist eigentlich SDO Timeout
@@ -355,19 +315,10 @@ CO_SDO_abortCode_t canopen::program_control_callback(CO_ODF_arg_t *p_odf_arg)
   }
 }
 
-/**
+/*
  * 1f56 - Set Program Software Identification
+ * const, wird beim Startup gesetzt
  */
-void canopen::set_program_software_id()
-{
-  u32 id;
-
-  id = globals.get_app_checksum();
-
-  CO_LOCK_OD();
-  OD_programSoftwareIdentification[0] = id;
-  CO_UNLOCK_OD();
-}
 
 /** @}*/
 /** @defgroup Manufacturer specific
@@ -382,68 +333,6 @@ void canopen::set_program_software_id()
 /* 2100 - Diagnose: Error status bits
  * ro, wird durch Stack verwaltet
  */
-
-/** 2101 - Debug: CAN node ID aus Anwendung einstellen
- *
- * @param id Node ID
- */
-void canopen::set_can_node_id(u8 id)
-{
-  CO_LOCK_OD();
-  OD_CANNodeID = id;
-  CO_UNLOCK_OD();
-
-  /* Parameter sichern */
-  (void)od_storage.save();
-  /* Mit neuer Adresse Kommunikation neu aufsetzen */
-  set_reset(CO_RESET_COMM);
-}
-
-/** 2101 - Debug: CAN node ID
- *
- * @returns Node ID
- */
-u8 canopen::get_can_node_id()
-{
-  u8 id;
-
-  CO_LOCK_OD();
-  id = OD_CANNodeID;
-  CO_UNLOCK_OD();
-
-  return id;
-}
-
-/** 2102 - Debug: CAN bit rate aus Anwendung einstellen
- *
- * @param bit_rate Bus Bitrate
- */
-void canopen::set_can_bit_rate(u16 bit_rate)
-{
-  CO_LOCK_OD();
-  OD_CANBitRate = bit_rate;
-  CO_UNLOCK_OD();
-
-  /* Parameter sichern */
-  (void)od_storage.save();
-  /* Bitrate umstellen */
-  set_reset(CO_RESET_COMM);
-}
-
-/** 2102 - Debug: Get CAN bit rate
- *
- * @returns Bus Bitrate
- */
-u16 canopen::get_can_bit_rate()
-{
-  u16 bit_rate;
-
-  CO_LOCK_OD();
-  bit_rate = OD_CANBitRate;
-  CO_UNLOCK_OD();
-
-  return bit_rate;
-}
 
 /** 2108 - Diagnose: Temperature
  *
@@ -591,6 +480,47 @@ CO_SDO_abortCode_t canopen::can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg)
 /*
  * Private Methoden canopen
  */
+
+/**
+ * Einige Werte im OD werden zur Compile Time / Startup Time generiert. Diese
+ * werden hier eingetragen.
+ *
+ * Diese Funktion darf nur vor dem Initialisieren des CO Stacks aufgerufen werden!
+ */
+void canopen::od_set_defaults(void)
+{
+  const char *p_version;
+  u32 id;
+  u16 mod_type;
+  u8 hw_rev;
+  u8 main;
+  u8 minor;
+  u8 bugfix;
+  u8 build;
+
+  /* 100a - Manufacturer software version anhand dem in Git vorhandenen Versionsstring */
+  p_version = globals.get_app_version_string();
+  (void)snprintf(OD_manufacturerSoftwareVersion,
+                 ODL_manufacturerSoftwareVersion_stringLength,
+                 p_version);
+
+  /* 1018-2 - Set Hardware Infos
+   *
+   * Diese Funktion "uberschreibt den Default aus dem OD Editor. Somit ist die
+   * tats"achliche Hardwaretype lesbar.
+   */
+  mod_type = globals.get_type();
+  hw_rev = globals.get_hw_rev();
+  OD_identity.productCode = hw_rev << 16 | mod_type;
+
+  /* 1018-3 - Set Firmwareversion anhand der in Git vorhandenen Versionsnummern */
+  globals.get_app_version(&main, &minor, &bugfix, &build);
+  OD_identity.revisionNumber = (u32)(main << 24 | minor << 16 | bugfix << 8 | build);
+
+  /* 1f56 - Set Program Software Identification */
+  id = globals.get_app_checksum();
+  OD_programSoftwareIdentification[0] = id;
+}
 
 /**
  * Schreibt bei NMT Zustands"anderung ein Event auf die per
@@ -1085,9 +1015,52 @@ void canopen::nmt_event(QueueHandle_t event_queue)
 
 /** @}*/
 
+CO_ReturnError_t canopen::get_node_id(u8 *p_nid)
+{
+  u8 active_nid;
+  u8 new_nid;
+  u16 dummy_bit;
+  CO_ReturnError_t co_result;
+  CO_NMT_reset_cmd_t reset;
 
+  if ((*p_nid > 0) && (*p_nid <= 127)) {
+    return CO_ERROR_NO;
+  }
 
-CO_ReturnError_t canopen::init(u8 addr, u32 interval)
+  //todo addr aus nvm wiederherstellen, pr"ufen
+
+  /*
+   * LSS Server starten und warten bis eine korrekte Node ID gesetzt wurde
+   */
+
+  /* OD Startwerte eintragen. Aus einem Teil dieser Werte wird die LSS
+   * Adresse generiert */
+  od_set_defaults();
+
+  /* initialize CANopen */
+  co_result = CO_init(CAN_MODULE_A, CO_LSS_NODE_ID_ASSIGNMENT, this->bit);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
+    return co_result;
+  }
+
+  active_nid = CO_LSS_NODE_ID_ASSIGNMENT;
+  new_nid = 0;
+  dummy_bit = 0;  // kann nicht ver"andert werden
+  do {
+    reset = CO_LSSslave_process(CO->LSSslave, this->bit, active_nid, &dummy_bit, &new_nid);
+    vTaskDelay(1);
+  } while (reset == CO_RESET_NOT);
+
+  /* gefunden */
+  *p_nid = new_nid;
+
+  CO_delete(CAN_MODULE_A);
+
+  return CO_ERROR_NO;
+}
+
+CO_ReturnError_t canopen::init(u8 nid, u32 interval)
 {
   CO_ReturnError_t co_result;
   BaseType_t os_result;
@@ -1098,22 +1071,15 @@ CO_ReturnError_t canopen::init(u8 addr, u32 interval)
     log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
     /* Wir laufen mit den Defaultwerten los */
   }
+  /* OD Startwerte eintragen */
+  od_set_defaults();
 
   this->worker_interval = interval;
+  this->nid = nid;
 
-  //todo automatische Adressvergabe
-  if (addr != 0) {
-    /* Wir greifen direkt ins OD da vor dem CO_init() kein Zugriff per get/set
-     * m"oglich ist. */
-    OD_CANNodeID = addr;
-  } else {
-    addr = OD_CANNodeID;
-  }
-  this->addr = addr;
 
   /* initialize CANopen */
-  bit = OD_CANBitRate;
-  co_result = CO_init(CAN_MODULE_A, this->addr, bit);
+  co_result = CO_init(CAN_MODULE_A, this->nid, this->bit);
   if (co_result != CO_ERROR_NO) {
     log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
     return co_result;
@@ -1129,11 +1095,8 @@ CO_ReturnError_t canopen::init(u8 addr, u32 interval)
   set_callback(OD_2109_voltage, voltage_callback_wrapper);
   set_callback(OD_2110_canRuntimeInfo, can_runtime_info_callback_wrapper);
 
-  /* OD Startwerte eintragen */
-  set_manufacturer_software_version();
-  set_identity_product_code();
-  set_identity_revision_number();
-  set_program_software_id();
+  /* start CAN */
+  CO_CANsetNormalMode(CO->CANmodule[0]);
 
   /* Configure Timer function for execution every <interval> millisecond */
   CANrx_threadTmr_init(this->worker_interval);
@@ -1156,9 +1119,6 @@ CO_ReturnError_t canopen::init(u8 addr, u32 interval)
 
   }
 
-  /* start CAN */
-  CO_CANsetNormalMode(CO->CANmodule[0]);
-
   return CO_ERROR_NO;
 }
 
@@ -1171,10 +1131,10 @@ void canopen::deinit(void)
     vTaskDelay(1);
   }
 
-  CO_delete(this->addr);
+  CO_delete(CAN_MODULE_A);
 
   this->reset = CO_RESET_NOT;
-  this->addr = 0;
+  this->nid = 0;
 }
 
 void canopen::process(void)
@@ -1245,11 +1205,11 @@ BaseType_t canopen::cmd_terminal( char *pcWriteBuffer,
   switch (opt) {
     case 'a':
       /* nach Muster -a 22 */
-      set_can_node_id(tmp);
+//todo lss      set_can_node_id(tmp);
       break;
     case 'b':
       /* nach Muster -b 125000 */
-      set_can_bit_rate(tmp);
+//todo lss      set_can_bit_rate(tmp);
       break;
     default:
       (void)snprintf(pcWriteBuffer, xWriteBufferLen, terminal_text_unknown_option, opt);
