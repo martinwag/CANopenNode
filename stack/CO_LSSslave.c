@@ -211,12 +211,23 @@ static void CO_LSSslave_serviceConfig(
             }
             break;
         case CO_LSS_CFG_STORE:
-            //todo initiate writing persistent memory. Bit rate -must- be
-            //successfully stored, otherwise mayhem after reboot
-
-            /* send confirmation */
             LSSslave->TXbuff->data[0] = CO_LSS_CFG_STORE;
-            LSSslave->TXbuff->data[1] = CO_LSS_CFG_STORE_NOT_SUPPORTED;
+            LSSslave->TXbuff->data[1] = CO_LSS_CFG_STORE_OK;
+
+            if (LSSslave->pFunctLSScfgStore == NULL) {
+                /* setting bit timing is not supported. Reply error*/
+                LSSslave->TXbuff->data[1] = CO_LSS_CFG_STORE_NOT_SUPPORTED;
+            }
+            else {
+                bool_t result;
+                /* Store "pending" to "persistent" */
+                result = LSSslave->pFunctLSScfgStore(LSSslave->functLSScfgStore,
+                    LSSslave->pendingNodeID, LSSslave->pendingBitRate);
+                if (result != true) {
+                    LSSslave->TXbuff->data[1] = CO_LSS_CFG_STORE_FAILED;
+                }
+            }
+            /* send confirmation */
             /* we do not use spec-error, always 0 */
             CO_memset(&LSSslave->TXbuff->data[2], 0, 6);
             CO_CANsend(LSSslave->CANdevTx, LSSslave->TXbuff);
@@ -253,7 +264,7 @@ static void CO_LSSslave_serviceInquire(
             value = LSSslave->lssAddress.serialNumber;
             break;
         case CO_LSS_INQUIRE_NODE_ID:
-            value = LSSslave->activeNodeID; //todo this is byte value, is this swapped to the correct position?
+            value = (uint32_t)LSSslave->activeNodeID;
             break;
         default:
             return;
@@ -357,6 +368,8 @@ CO_ReturnError_t CO_LSSslave_init(
     LSSslave->functLSScheckBitRateObject = NULL;
     LSSslave->pFunctLSSactivateBitRate = NULL;
     LSSslave->functLSSactivateBitRateObject = NULL;
+    LSSslave->pFunctLSScfgStore = NULL;
+    LSSslave->functLSScfgStore = NULL;
 
     /* configure LSS CAN Master message reception */
     CO_CANrxBufferInit(
@@ -405,6 +418,19 @@ void CO_LSSslave_initActivateBitRateCallback(
         LSSslave->pFunctLSSactivateBitRate = pFunctLSSactivateBitRate;
         LSSslave->functLSSactivateBitRateObject = object;
     }
+}
+
+
+/******************************************************************************/
+void CO_LSSslave_initCfgStoreCallback(
+        CO_LSSslave_t          *LSSslave,
+        void                   *object,
+        bool_t                (*pFunctLSScfgStore)(void *object, uint8_t id, uint16_t bitRate))
+{
+  if(LSSslave != NULL){
+      LSSslave->pFunctLSScfgStore = pFunctLSScfgStore;
+      LSSslave->functLSScfgStore = object;
+  }
 }
 
 
