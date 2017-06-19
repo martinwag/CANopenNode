@@ -94,12 +94,14 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule,
   CANmodule->errOld = 0U;
   CANmodule->em = NULL;
 
-  for (i = 0U; i < rxSize; i++) {
-    rxArray[i].ident = 0U;
-    rxArray[i].pFunct = NULL;
+  for(i=0U; i<rxSize; i++){
+      rxArray[i].ident = 0U;
+      rxArray[i].mask = 0xFFFFFFFFU;
+      rxArray[i].object = NULL;
+      rxArray[i].pFunct = NULL;
   }
-  for (i = 0U; i < txSize; i++) {
-    txArray[i].bufferFull = false;
+  for(i=0U; i<txSize; i++){
+      txArray[i].bufferFull = false;
   }
 
   /* First time only configuration */
