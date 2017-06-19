@@ -414,10 +414,10 @@ CO_ReturnError_t CO_init(
             nodeId,
             CO->CANmodule[0],
             CO_RXCAN_LSS_SRV,
-            CO_CAN_ID_LSS_SLAVE,
+            CO_CAN_ID_LSS_SRV,
             CO->CANmodule[0],
             CO_TXCAN_LSS_CLI,
-            CO_CAN_ID_LSS_MASTER);
+            CO_CAN_ID_LSS_CLI);
 
     if(err){CO_delete(CANbaseAddress); return err;}
 
