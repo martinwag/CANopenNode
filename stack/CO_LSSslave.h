@@ -59,6 +59,15 @@ extern "C" {
  */
 
 /**
+ * Return code for CO_LSSslave_process() that tells application code what to
+ * continue with.
+ */
+typedef enum{
+    CO_LSS_SLAVE_CMD_NOT  = 0,                /**< Normal return, no action */
+    CO_LSS_SLAVE_CONTINUE_NMT_INIT = 1,       /**< Application must continue with NMT init */
+}CO_LSSslave_cmd_t;
+
+/**
  * LSS slave object.
  */
 typedef struct{
@@ -72,6 +81,13 @@ typedef struct{
 //    uint8_t                 persistentNodeID; /**< Node ID that is stored to LSS slaves NVM */
     uint8_t                 pendingNodeID;    /**< Node ID that is temporarily configured in volatile memory */
     uint8_t                 activeNodeID;     /**< Node ID used at the CAN interface */
+
+    bool_t                (*pFunctLSScheckBitRate)(void *object, uint16_t bitRate); /**< From CO_LSSslave_initCheckBitRateCallback() or NULL */
+    void                   *functLSScheckBitRateObject; /** Pointer to object */
+    void                  (*pFunctLSSactivateBitRate)(void *object, uint16_t delay); /**< From CO_LSSslave_initActivateBitRateCallback() or NULL. Delay is in ms */
+    void                   *functLSSactivateBitRateObject; /** Pointer to object */
+    bool_t                (*pFunctLSScfgStore)(void *object, uint8_t id, uint16_t bitRate); /**< From CO_LSSslave_initCfgStoreCallback() or NULL */
+    void                   *functLSScfgStore; /** Pointer to object */
 
     CO_CANmodule_t         *CANdevTx;         /**< From #CO_LSSslave_init() */
     CO_CANtx_t             *TXbuff;           /**< CAN transmit buffer */
@@ -114,9 +130,9 @@ CO_ReturnError_t CO_LSSslave_init(
  * @param activeNodeId
  * @param pendingBitRate [out]
  * @param pendingNodeId [out]
- * @return #CO_NMT_reset_cmd_t: CO_RESET_NOT or CO_RESET_COMM.
+ * @return #CO_LSSslave_cmd_t: CO_LSS_SLAVE_CMD_NOT or CO_LSS_SLAVE_CONTINUE_NMT_INIT.
  */
-CO_NMT_reset_cmd_t CO_LSSslave_process(
+CO_LSSslave_cmd_t CO_LSSslave_process(
         CO_LSSslave_t          *LSSslave,
         uint16_t                activeBitRate,
         uint8_t                 activeNodeId,
@@ -124,18 +140,68 @@ CO_NMT_reset_cmd_t CO_LSSslave_process(
         uint8_t                *pendingNodeId);
 
 /**
- * Initialize LSS persistent value changed callback
+ * Initialize verify bit rate callback
  *
- * Function initializes callback function, which is called after LSS persistent
- * values (address or bit rate) are changed. If LSS persistance is required, the
- * application has to provide non-volatile storage for those values.
+ * Function initializes callback function, which is called when "config bit
+ * timing parameters" is used. The callback function needs to check if the new bit
+ * rate is supported by the CANopen device. Callback returns "true" if supported.
+ * When no callback is set, LSS server will no-ack the request.
+ *
+ * @remark Depending on the CAN driver implementation, this function is called
+ * inside an ISR
  *
  * @param LSSslave This object.
- * @param pFunctLSS Pointer to the callback function. Not called if NULL.
+ * @param object Pointer to object, which will be passed to #pFunctLSScheckBitRate. Can be NULL
+ * @param pFunctLSScheckBitRate Pointer to the callback function. Not called if NULL.
  */
-void CO_LSSslave_initPersistanceCallback(
+void CO_LSSslave_initCheckBitRateCallback(
         CO_LSSslave_t          *LSSslave,
-        void                  (*pFunctLSS)(uint8_t persistentBitRate, uint8_t persistentNodeID));
+        void                   *object,
+        bool_t                (*pFunctLSScheckBitRate)(void *object, uint16_t bitRate));
+
+/**
+ * Initialize activate bit rate callback
+ *
+ * Function initializes callback function, which is called when "activate bit
+ * timing parameters" is used. The callback function gives the user an event to
+ * allow setting a timer or do calculations based on the exact time the request
+ * arrived.
+ * According to DSP 305 6.4.4, the delay has to be applied once before and once after
+ * switching bit rates. During this time, a device musn't send any messages.
+ *
+ * @remark Depending on the CAN driver implementation, this function is called
+ * inside an ISR
+ *
+ * @param LSSslave This object.
+ * @param object Pointer to object, which will be passed to #pFunctLSSchangeBitRate. Can be NULL
+ * @param pFunctLSSchangeBitRate Pointer to the callback function. Not called if NULL.
+ */
+void CO_LSSslave_initActivateBitRateCallback(
+        CO_LSSslave_t          *LSSslave,
+        void                   *object,
+        void                  (*pFunctLSSactivateBitRate)(void *object, uint16_t delay));
+
+/**
+ * Store configuration callback
+ *
+ * Function initializes callback function, which is called when "store configuration" is used.
+ * The callback function gives the user an event to store the corresponding node id and bit rate
+ * to NVM. Those values have to be supplied to the init function as "persistent values"
+ * after reset. If callback returns "true", success is send to the LSS master. When no
+ * callback is set, LSS server will no-ack the request.
+ *
+ * @remark Depending on the CAN driver implementation, this function is called
+ * inside an ISR
+ *
+ * @param LSSslave This object.
+ * @param object Pointer to object, which will be passed to #pFunctLSSchangeBitRate. Can be NULL
+ * @param pFunctLSScfgStore Pointer to the callback function. Not called if NULL.
+ */
+void CO_LSSslave_initCfgStoreCallback(
+        CO_LSSslave_t          *LSSslave,
+        void                   *object,
+        bool_t                (*pFunctLSScfgStore)(void *object, uint8_t id, uint16_t bitRate));
+
 
 
 

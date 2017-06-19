@@ -105,9 +105,9 @@ typedef enum {
  * Macro to get service type from command specifier
  * @{*/
 #define CO_LSS_cs_serviceIsSwitchStateGlobal(cs) (cs == CO_LSS_SWITCH_STATE_GLOBAL)
-#define CO_LSS_cs_serviceIsSwitchStateSelective(cs) (cs <= CO_LSS_SWITCH_STATE_SEL_VENDOR && cs >= CO_LSS_SWITCH_STATE_SEL)
-#define CO_LSS_cs_serviceIsConfig(cs) (cs <= CO_LSS_CFG_NODE_ID && cs >= CO_LSS_CFG_STORE)
-#define CO_LSS_cs_serviceIsInquire(cs) (cs <= CO_LSS_INQUIRE_VENDOR && cs >= CO_LSS_INQUIRE_NODE_ID)
+#define CO_LSS_cs_serviceIsSwitchStateSelective(cs) (cs >= CO_LSS_SWITCH_STATE_SEL_VENDOR && cs <= CO_LSS_SWITCH_STATE_SEL)
+#define CO_LSS_cs_serviceIsConfig(cs) (cs >= CO_LSS_CFG_NODE_ID && cs <= CO_LSS_CFG_STORE)
+#define CO_LSS_cs_serviceIsInquire(cs) (cs >= CO_LSS_INQUIRE_VENDOR && cs <= CO_LSS_INQUIRE_NODE_ID)
 #define CO_LSS_cs_serviceIsIdentFastscan(cs) (cs == CO_LSS_IDENT_FASTSCAN)
 /**@}*/
 
@@ -208,7 +208,7 @@ static const uint16_t CO_LSS_bitTimingTableLookup[]  = {
 /**
  * Macro to check if node id is valid
  */
-#define CO_LSS_nodeIdValid(nid) ((nid >= 1 && nid <= 0x7F) || nid == 0xFF)
+#define CO_LSS_nodeIdValid(nid) ((nid >= 1 && nid <= 0x7F) || nid == CO_LSS_NODE_ID_ASSIGNMENT)
 
 
 #ifdef __cplusplus
