@@ -246,29 +246,19 @@ class canopen: public canopen_errors {
     /** @}*/
 
     /**
-     * G"ultige CANopen Node ID bestimmen.
-     *
-     * Diese wird entweder vom NVM gelesen oder durch das Fastscan Verfahren
-     * durch den Master gesetzt
-     *
-     * @remark Diese Funktion blockiert bis eine g"ultige Adresse (1..127)
-     * bestimmt wurde.
-     *
-     * @param p_nid [in] [out] Adresse durch Applikation vorgeben, "Ubersteuert 
-     * NVM. Bestimmte Adresse.
-     * @return CO_ERROR_NO wenn erfolgreich
-     */
-    CO_ReturnError_t get_node_id(u8 *p_nid);
-
-    /**
      * CANopen Stack initialisieren
      *
-     * @param nid CANopen Node ID. Diese kann vorgegeben oder durch #get_node_id()
-     * bestimmt werden
+     * @remark Falls keine Node ID vorgegeben ist, wird diese per LSS bestimmt.
+     * Dieser Vorgang wartet bis eine g"ultige Adresse (1..127) gesetzt wurde.
+     * Hierf"ur wird eine Watchdog ID ben"otigt um den WDT korrekt zu triggern.
+     *
+     * @param nid CANopen Node ID. 0 = Node ID per LSS bestimmen.
      * @param interval Abarbeitungsintervall f"ur zeitkritische CANopen Komponenten
+     * @param wdt Softwatchdog des aufrufenden Threads, falls Node ID bestimmt
+     * werden soll.
      * @return CO_ERROR_NO wenn erfolgreich
      */
-    CO_ReturnError_t init(u8 nid, u32 interval);
+    CO_ReturnError_t init(u8 nid, u32 interval, u8 wdt);
 
     /**
      * CANopen Stack deinitialisieren

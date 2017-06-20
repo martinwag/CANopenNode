@@ -1015,75 +1015,73 @@ void canopen::nmt_event(QueueHandle_t event_queue)
 
 /** @}*/
 
-CO_ReturnError_t canopen::get_node_id(u8 *p_nid)
-{
-  u8 active_nid;
-  u8 new_nid;
-  u16 dummy_bit;
-  CO_ReturnError_t co_result;
-  CO_NMT_reset_cmd_t reset;
-
-  if ((*p_nid > 0) && (*p_nid <= 127)) {
-    return CO_ERROR_NO;
-  }
-
-  //todo addr aus nvm wiederherstellen, pr"ufen
-
-  /*
-   * LSS Server starten und warten bis eine korrekte Node ID gesetzt wurde
-   */
-
-  /* OD Startwerte eintragen. Aus einem Teil dieser Werte wird die LSS
-   * Adresse generiert */
-  od_set_defaults();
-
-  /* initialize CANopen */
-  co_result = CO_init(CAN_MODULE_A, CO_LSS_NODE_ID_ASSIGNMENT, this->bit);
-  if (co_result != CO_ERROR_NO) {
-    log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
-    return co_result;
-  }
-
-  active_nid = CO_LSS_NODE_ID_ASSIGNMENT;
-  new_nid = 0;
-  dummy_bit = 0;  // kann nicht ver"andert werden
-  do {
-    reset = CO_LSSslave_process(CO->LSSslave, this->bit, active_nid, &dummy_bit, &new_nid);
-    vTaskDelay(1);
-  } while (reset == CO_RESET_NOT);
-
-  /* gefunden */
-  *p_nid = new_nid;
-
-  CO_delete(CAN_MODULE_A);
-
-  return CO_ERROR_NO;
-}
-
-CO_ReturnError_t canopen::init(u8 nid, u32 interval)
+CO_ReturnError_t canopen::init(u8 nid, u32 interval, u8 wdt)
 {
   CO_ReturnError_t co_result;
   BaseType_t os_result;
-  u16 bit;
+  u8 new_nid;
+  u16 dummy;
 
+  if (nid == 0) {
+    nid = CO_LSS_NODE_ID_ASSIGNMENT;
+  }
+
+  /* Objektverzeichnis Festwerte eintragen */
+  od_set_defaults();
+
+  /* Objektverzeichnis NVM Werte laden */
   co_result = od_storage.load();
   if (co_result != CO_ERROR_NO) {
     log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
     /* Wir laufen mit den Defaultwerten los */
   }
-  /* OD Startwerte eintragen */
-  od_set_defaults();
 
-  this->worker_interval = interval;
-  this->nid = nid;
-
-
-  /* initialize CANopen */
-  co_result = CO_init(CAN_MODULE_A, this->nid, this->bit);
+  /* CANopenNode, LSS initialisieren */
+  co_result = CO_new();
   if (co_result != CO_ERROR_NO) {
     log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
     return co_result;
   }
+  co_result = CO_CANinit(CAN_MODULE_A, this->bit);
+  if (co_result != CO_ERROR_NO) {
+    CO_delete(CAN_MODULE_A);
+    log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
+    return co_result;
+  }
+
+  //todo Node ID aus nvm wiederherstellen, pr"ufen
+
+  co_result = CO_LSSinit(nid, this->bit);
+  if (co_result != CO_ERROR_NO) {
+    CO_delete(CAN_MODULE_A);
+    log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
+    return co_result;
+  }
+
+  /* start CAN */
+  CO_CANsetNormalMode(CO->CANmodule[0]);
+
+  /* Get Node ID */
+  do {
+    wdt_trigger(wdt);
+    (void)CO_CANrxWait(CO->CANmodule[0], WDT_MAX_DELAY);
+    CO_LSSslave_process(CO->LSSslave, this->bit, nid, &dummy, &new_nid);
+  } while (new_nid == CO_LSS_NODE_ID_ASSIGNMENT);
+  if (new_nid != nid) {
+    log_printf(LOG_NOTICE, NOTE_LSS, new_nid);
+  }
+  nid = new_nid;
+
+  /* start CANopen */
+  co_result = CO_CANopenInit(nid);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
+    return co_result;
+  }
+
+  /* Infos eintragen */
+  this->worker_interval = interval;
+  this->nid = nid;
   threadMain_init(this->main_interval); /* ms Interval */
 
   /* OD Callbacks */
@@ -1094,9 +1092,6 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval)
   set_callback(OD_2108_temperature, temperature_callback_wrapper);
   set_callback(OD_2109_voltage, voltage_callback_wrapper);
   set_callback(OD_2110_canRuntimeInfo, can_runtime_info_callback_wrapper);
-
-  /* start CAN */
-  CO_CANsetNormalMode(CO->CANmodule[0]);
 
   /* Configure Timer function for execution every <interval> millisecond */
   CANrx_threadTmr_init(this->worker_interval);
@@ -1139,6 +1134,8 @@ void canopen::deinit(void)
 
 void canopen::process(void)
 {
+  u16 dummy;
+  u8 new_nid;
   CO_ReturnError_t result;
   CO_NMT_reset_cmd_t reset;
 
@@ -1152,10 +1149,16 @@ void canopen::process(void)
   reset = get_reset();
   if (reset != CO_RESET_NOT){
     log_printf(LOG_DEBUG, DEBUG_CANOPEN_RESET, reset);
+
+    CO_LSSslave_process(CO->LSSslave, this->bit, this->nid, &dummy, &new_nid);
+    if (new_nid != this->nid) {
+      log_printf(LOG_NOTICE, NOTE_LSS, new_nid);
+    }
+
     switch (reset) {
       case CO_RESET_COMM:
         deinit();
-        result = init(0, this->worker_interval);
+        result = init(new_nid, this->worker_interval, -1); //todo
         if (result != CO_ERROR_NO) {
           globals.request_reboot();
         }
