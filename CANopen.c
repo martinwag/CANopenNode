@@ -202,20 +202,14 @@
 #endif
 
 
-/******************************************************************************/
-CO_ReturnError_t CO_init(
-        int32_t                 CANbaseAddress,
-        uint8_t                 nodeId,
-        uint16_t                bitRate)
-{
 
+/******************************************************************************/
+CO_ReturnError_t CO_new(void)
+{
     int16_t i;
     CO_ReturnError_t err;
 #ifndef CO_USE_GLOBALS
     uint16_t errCnt;
-#endif
-#if CO_NO_LSS_SERVER == 1
-    CO_LSS_address_t lssAddress;
 #endif
 #if CO_NO_TRACE > 0
     uint32_t CO_traceBufferSize[CO_NO_TRACE];
@@ -386,7 +380,16 @@ CO_ReturnError_t CO_init(
 
     if(errCnt != 0) return CO_ERROR_OUT_OF_MEMORY;
 #endif
+    return CO_ERROR_NO;
+}
 
+
+/******************************************************************************/
+CO_ReturnError_t CO_CANinit(
+        int32_t                 CANbaseAddress,
+        uint16_t                bitRate)
+{
+    CO_ReturnError_t err;
 
     CO->CANmodule[0]->CANnormal = false;
     CO_CANsetConfigurationMode(CANbaseAddress);
@@ -400,9 +403,19 @@ CO_ReturnError_t CO_init(
             CO_TXCAN_NO_MSGS,
             bitRate);
 
-    if(err){CO_delete(CANbaseAddress); return err;}
+    return err;
+}
 
+
+/******************************************************************************/
 #if CO_NO_LSS_SERVER == 1
+CO_ReturnError_t CO_LSSinit(
+        uint8_t                 nodeId,
+        uint16_t                bitRate)
+{
+    CO_LSS_address_t lssAddress;
+    CO_ReturnError_t err;
+
     lssAddress.productCode = OD_identity.productCode;
     lssAddress.revisionNumber = OD_identity.revisionNumber;
     lssAddress.serialNumber = OD_identity.serialNumber;
@@ -419,18 +432,20 @@ CO_ReturnError_t CO_init(
             CO_TXCAN_LSS_CLI,
             CO_CAN_ID_LSS_CLI);
 
-    if(err){CO_delete(CANbaseAddress); return err;}
+    return err;
+}
+#endif /* CO_NO_LSS_SERVER == 1 */
 
-    if(nodeId == CO_LSS_NODE_ID_ASSIGNMENT) {
-        /* Special case - invalid node ID is set. Remain in NMT "reset communication"
-         * sub state and wait for LSS master to set node ID. */
-        return CO_ERROR_NO;
-    }
-#endif
+
+/******************************************************************************/
+CO_ReturnError_t CO_CANopenInit(
+        uint8_t                 nodeId)
+{
+    int16_t i;
+    CO_ReturnError_t err;
 
     /* Verify CANopen Node-ID */
     if(nodeId<1 || nodeId>127) {
-        CO_delete(CANbaseAddress);
         return CO_ERROR_PARAMETERS;
     }
 
@@ -463,7 +478,7 @@ CO_ReturnError_t CO_init(
                 CO_TXCAN_SDO_SRV+i);
     }
 
-    if(err){CO_delete(CANbaseAddress); return err;}
+    if(err){return err;}
 
 
     err = CO_EM_init(
@@ -479,7 +494,7 @@ CO_ReturnError_t CO_init(
             CO_TXCAN_EMERG,
             CO_CAN_ID_EMERGENCY + nodeId);
 
-    if(err){CO_delete(CANbaseAddress); return err;}
+    if(err){return err;}
 
 
     err = CO_NMT_init(
@@ -494,7 +509,7 @@ CO_ReturnError_t CO_init(
             CO_TXCAN_HB,
             CO_CAN_ID_HEARTBEAT + nodeId);
 
-    if(err){CO_delete(CANbaseAddress); return err;}
+    if(err){return err;}
 
 
 #if CO_NO_NMT_MASTER == 1
@@ -521,7 +536,7 @@ CO_ReturnError_t CO_init(
             CO->CANmodule[0],
             CO_TXCAN_SYNC);
 
-    if(err){CO_delete(CANbaseAddress); return err;}
+    if(err){return err;}
 
 
     for(i=0; i<CO_NO_RPDO; i++){
@@ -544,7 +559,7 @@ CO_ReturnError_t CO_init(
                 CANdevRx,
                 CANdevRxIdx);
 
-        if(err){CO_delete(CANbaseAddress); return err;}
+        if(err){return err;}
     }
 
 
@@ -564,7 +579,7 @@ CO_ReturnError_t CO_init(
                 CO->CANmodule[0],
                 CO_TXCAN_TPDO+i);
 
-        if(err){CO_delete(CANbaseAddress); return err;}
+        if(err){return err;}
     }
 
 
@@ -578,7 +593,7 @@ CO_ReturnError_t CO_init(
             CO->CANmodule[0],
             CO_RXCAN_CONS_HB);
 
-    if(err){CO_delete(CANbaseAddress); return err;}
+    if(err){return err;}
 
 
 #if CO_NO_SDO_CLIENT == 1
@@ -591,7 +606,7 @@ CO_ReturnError_t CO_init(
             CO->CANmodule[0],
             CO_TXCAN_SDO_CLI);
 
-    if(err){CO_delete(CANbaseAddress); return err;}
+    if(err){return err;}
 #endif
 
 
@@ -617,6 +632,36 @@ CO_ReturnError_t CO_init(
     }
 #endif
 
+    return CO_ERROR_NO;
+}
+
+
+
+/******************************************************************************/
+CO_ReturnError_t CO_init(
+        int32_t                 CANbaseAddress,
+        uint8_t                 nodeId,
+        uint16_t                bitRate)
+{
+    int16_t i;
+    CO_ReturnError_t err;
+
+    err = CO_new();
+    if (err) {
+        return err;
+    }
+
+    err = CO_CANinit(CANbaseAddress, bitRate);
+    if (err) {
+        CO_delete(CANbaseAddress);
+        return err;
+    }
+
+    err = CO_CANopenInit(CANbaseAddress, nodeId);
+    if (err) {
+        CO_delete(CANbaseAddress);
+        return err;
+    }
 
     return CO_ERROR_NO;
 }

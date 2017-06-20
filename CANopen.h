@@ -173,20 +173,69 @@ typedef struct{
 #endif
 
 
+#if CO_NO_LSS_SERVER == 1
+/**
+ * Allocate and initialize memory
+ *
+ * Function must be called in the communication reset section.
+ *
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT,
+ * CO_ERROR_OUT_OF_MEMORY
+ */
+CO_ReturnError_t CO_new(void);
+
+
+/**
+ * Initialize CAN driver
+ *
+ * Function must be called in the communication reset section.
+ *
+ * @param CANbaseAddress Address of the CAN module, passed to CO_CANmodule_init().
+ * @param bitRate CAN bit rate.
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT,
+ * CO_ERROR_ILLEGAL_BAUDRATE, CO_ERROR_OUT_OF_MEMORY
+ */
+CO_ReturnError_t CO_CANinit(
+        int32_t                 CANbaseAddress,
+        uint16_t                bitRate);
+
+
+/**
+ * Initialize CANopen LSS slave
+ *
+ * Function must be called in the communication reset section.
+ *
+ * @param nodeId Node ID of the CANopen device (1 ... 127) or CO_LSS_NODE_ID_ASSIGNMENT
+ * @param bitRate CAN bit rate.
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT
+ */
+CO_ReturnError_t CO_LSSinit(
+        uint8_t                 nodeId,
+        uint16_t                bitRate);
+
+
 /**
  * Initialize CANopen stack.
  *
  * Function must be called in the communication reset section.
  *
- * @remark If @ref CO_LSS slave is enabled, the node can take part in node ID assignment
- * without a valid node ID. In this case, set nodeID to @ref CO_LSS_NODE_ID_ASSIGNMENT.
- * Then only the LSS server is started. Other CANopen functions are not enabled and
- * therefore can't be used!
- * @todo just link to usage example in @ref CO_LSS?
+ * @param nodeId Node ID of the CANopen device (1 ... 127).
+ *
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT
+ */
+CO_ReturnError_t CO_CANopenInit(
+        uint8_t                 nodeId);
+
+
+#else /* CO_NO_LSS_SERVER == 1 */
+/**
+ * Initialize CANopen stack.
+ *
+ * Function must be called in the communication reset section.
  *
  * @param CANbaseAddress Address of the CAN module, passed to CO_CANmodule_init().
  * @param nodeId Node ID of the CANopen device (1 ... 127).
- * @param nodeId CAN bit rate.
+ * @param bitRate CAN bit rate.
  *
  * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT,
  * CO_ERROR_OUT_OF_MEMORY, CO_ERROR_ILLEGAL_BAUDRATE
@@ -195,6 +244,8 @@ CO_ReturnError_t CO_init(
         int32_t                 CANbaseAddress,
         uint8_t                 nodeId,
         uint16_t                bitRate);
+
+#endif /* CO_NO_LSS_SERVER == 1 */
 
 
 /**
