@@ -207,7 +207,6 @@
 CO_ReturnError_t CO_new(void)
 {
     int16_t i;
-    CO_ReturnError_t err;
 #ifndef CO_USE_GLOBALS
     uint16_t errCnt;
 #endif
@@ -636,14 +635,12 @@ CO_ReturnError_t CO_CANopenInit(
 }
 
 
-
 /******************************************************************************/
 CO_ReturnError_t CO_init(
         int32_t                 CANbaseAddress,
         uint8_t                 nodeId,
         uint16_t                bitRate)
 {
-    int16_t i;
     CO_ReturnError_t err;
 
     err = CO_new();
@@ -657,7 +654,7 @@ CO_ReturnError_t CO_init(
         return err;
     }
 
-    err = CO_CANopenInit(CANbaseAddress, nodeId);
+    err = CO_CANopenInit(nodeId);
     if (err) {
         CO_delete(CANbaseAddress);
         return err;

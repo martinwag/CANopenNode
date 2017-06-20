@@ -175,7 +175,7 @@ typedef struct{
 
 #if CO_NO_LSS_SERVER == 1
 /**
- * Allocate and initialize memory
+ * Allocate and initialize memory for CANopen object
  *
  * Function must be called in the communication reset section.
  *
