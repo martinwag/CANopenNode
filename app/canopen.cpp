@@ -59,6 +59,8 @@ const CLI_Command_Definition_t terminal =
 
 #endif
 
+extern void housekeeping_main(void);
+
 /* Klasse canopen */
 class canopen canopen;
 /* Klassenvariablen */
@@ -582,30 +584,6 @@ void canopen::set_callback(u16 obj_dict_id,
 }
 
 /**
- * CANopen Resetanforderung speichern
- *
- * @param reset geforderter Reset
- */
-void canopen::set_reset(CO_NMT_reset_cmd_t reset)
-{
-  if (reset > this->reset) {
-    /* Neue Anforderung hat h"ohere Priorit"at als vorherige */
-    this->reset = reset;
-  }
-}
-
-/**
- * Get CANopen Resetanfordertung
- *
- * @return aktueller Zustand
- */
-
-CO_NMT_reset_cmd_t canopen::get_reset(void)
-{
-  return reset;
-}
-
-/**
  * Pointer auf OD Eintrag anhand Index/Subindex bestimmen
  *
  * @param index OD Index (z.B. aus CO_OD.h)
@@ -1015,7 +993,7 @@ void canopen::nmt_event(QueueHandle_t event_queue)
 
 /** @}*/
 
-CO_ReturnError_t canopen::init(u8 nid, u32 interval, u8 wdt)
+CO_ReturnError_t canopen::init(u8 nid, u32 interval)
 {
   CO_ReturnError_t co_result;
   BaseType_t os_result;
@@ -1040,7 +1018,7 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval, u8 wdt)
   /* Abh. vom Aufrufparameter wird die Persistent NID vom NVM geladen */
   if (nid == 0) {
     co_result = storage.load_lss(&persistent_nid, &dummy);
-    if (co_result != CO_ERROR_NO) {
+    if ((co_result != CO_ERROR_NO) || ! CO_LSS_nodeIdValid(persistent_nid)) {
       /* NVM nicht initialisiert oder fehlerhaft */
       log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
       persistent_nid = CO_LSS_NODE_ID_ASSIGNMENT;
@@ -1072,14 +1050,21 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval, u8 wdt)
   /* start CAN */
   CO_CANsetNormalMode(CO->CANmodule[0]);
 
+#ifndef UNIT_TEST
+  if (this->terminal_registred != true) {
+    (void)FreeRTOS_CLIRegisterCommand(&terminal);
+    this->terminal_registred = true;
+  }
+#endif
+
   /* Get Node ID */
   do {
-    wdt_trigger(wdt);
-    (void)CO_CANrxWait(CO->CANmodule[0], WDT_MAX_DELAY);
+    housekeeping_main();
+    (void)CO_CANrxWait(CO->CANmodule[0], 10);
     CO_LSSslave_process(CO->LSSslave, this->active_bit, this->active_nid,
                         &dummy, &pending_nid);
   } while (pending_nid == CO_LSS_NODE_ID_ASSIGNMENT);
-  if (pending_nid != nid) {
+  if (pending_nid != persistent_nid) {
     log_printf(LOG_NOTICE, NOTE_LSS, pending_nid);
   }
 
@@ -1118,11 +1103,6 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval, u8 wdt)
       log_printf(LOG_ERR, ERR_THREAD_CREATE_FAILED, "CO");
       return /* Let's assume */ CO_ERROR_OUT_OF_MEMORY;
     }
-
-#ifndef UNIT_TEST
-    (void)FreeRTOS_CLIRegisterCommand(&terminal);
-#endif
-
   }
 
   return CO_ERROR_NO;
@@ -1162,13 +1142,10 @@ void canopen::process(void)
   CO_NMT_reset_cmd_t reset;
 
   threadMain_process(&reset);
-  set_reset(reset);
 
   /* Reset auswerten. Der Reset kann von folgenden Stellen getriggert werden:
    * - Netzwerk
-   * - Stack
-   * - eigene Funktionalit"at */
-  reset = get_reset();
+   * - Stack */
   if (reset != CO_RESET_NOT){
     log_printf(LOG_DEBUG, DEBUG_CANOPEN_RESET, reset);
 
@@ -1181,7 +1158,7 @@ void canopen::process(void)
     switch (reset) {
       case CO_RESET_COMM:
         deinit();
-        result = init(pending_nid, this->worker_interval, -1);
+        result = init(pending_nid, this->worker_interval);
         if (result != CO_ERROR_NO) {
           globals.request_reboot();
         }
@@ -1211,6 +1188,7 @@ BaseType_t canopen::cmd_terminal( char *pcWriteBuffer,
   int tmp;
   char opt;
   tResult result;
+  can_state_t state;
   BaseType_t optarg_length;
   const char *p_opttmp;
   const char *p_optarg;
@@ -1230,12 +1208,19 @@ BaseType_t canopen::cmd_terminal( char *pcWriteBuffer,
 
   switch (opt) {
     case 'a':
-      /* nach Muster -a 22 */
-//todo lss      set_can_node_id(tmp);
+      /* nach Muster -a 22
+       * Quick & dirty ohne Locking des NVM Schreibzugriffs */
+      (void)storage.save_lss(tmp, this->active_bit);
+      globals.request_reboot(); //triggert LSS NVM restore
       break;
     case 'b':
-      /* nach Muster -b 125000 */
-//todo lss      set_can_bit_rate(tmp);
+      /* nach Muster -b <can_baud_t>. 1 MBit = 0
+       * Quick & dirty direkt in den Treiber, nicht speichernd */
+      state = can_ioctl(CO->CANmodule[0]->driver, CAN_SET_BAUDRATE,
+                        reinterpret_cast<void*>(&tmp));
+      if (state != CAN_OK) {
+        (void)snprintf(pcWriteBuffer, xWriteBufferLen, "Failed: %d" NEWLINE, state);
+      }
       break;
     default:
       (void)snprintf(pcWriteBuffer, xWriteBufferLen, terminal_text_unknown_option, opt);

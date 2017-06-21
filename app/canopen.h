@@ -38,6 +38,7 @@ class canopen: public canopen_errors {
     static const u8 main_interval = 50; /*!< ms, max. Wartezeit auf Events in process() */
     u32 worker_interval;              /*!< CO Thread Intervall */
     static QueueHandle_t nmt_event_queue; /*!< per <nmt_event()> eingetragene Queue */
+    bool terminal_registred;          /*!< Flag Terminalbefehl nicht mehrmals registrieren */
 
     /*1010*/CO_SDO_abortCode_t store_parameters_callback(CO_ODF_arg_t *p_odf_arg);
     /*1011*/CO_SDO_abortCode_t restore_default_parameters_callback(CO_ODF_arg_t *p_odf_arg);
@@ -56,9 +57,6 @@ class canopen: public canopen_errors {
     static CO_SDO_abortCode_t generic_write_callback(CO_ODF_arg_t *p_odf_arg);
 
     void set_callback(u16 obj_dict_id, CO_SDO_abortCode_t (*pODFunc)(CO_ODF_arg_t *ODF_arg));
-
-    void set_reset(CO_NMT_reset_cmd_t reset);
-    CO_NMT_reset_cmd_t get_reset();
 
     void *get_od_pointer(u16 index, u8 subindex, size_t size);
 
@@ -246,7 +244,7 @@ class canopen: public canopen_errors {
     /** @}*/
 
     /**
-     * CANopen Stack initialisieren
+     * CANopen Stack innerhalb von main() initialisieren
      *
      * @remark Falls keine Node ID vorgegeben ist, wird diese per LSS bestimmt.
      * Dieser Vorgang wartet bis eine g"ultige Adresse (1..127) gesetzt wurde.
@@ -254,11 +252,9 @@ class canopen: public canopen_errors {
      *
      * @param nid CANopen Node ID. 0 = Node ID per LSS bestimmen.
      * @param interval Abarbeitungsintervall f"ur zeitkritische CANopen Komponenten
-     * @param wdt Softwatchdog des aufrufenden Threads, falls Node ID bestimmt
-     * werden soll.
      * @return CO_ERROR_NO wenn erfolgreich
      */
-    CO_ReturnError_t init(u8 nid, u32 interval, u8 wdt);
+    CO_ReturnError_t init(u8 nid, u32 interval);
 
     /**
      * Node ID vorgeben. Ist diese g"ultig wird sie als persistent Node ID abgelegt.
