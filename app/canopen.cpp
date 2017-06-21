@@ -138,7 +138,7 @@ CO_SDO_abortCode_t canopen::store_parameters_callback(CO_ODF_arg_t *p_odf_arg)
         /* keine Signatur "save" */
         return CO_SDO_AB_DATA_TRANSF;
       }
-      result = od_storage.save();
+      result = storage.save_od();
       if (result != CO_ERROR_NO)  {
         return CO_SDO_AB_HW;
       }
@@ -180,7 +180,7 @@ CO_SDO_abortCode_t canopen::restore_default_parameters_callback(CO_ODF_arg_t *p_
         /* keine Signatur "load" */
         return CO_SDO_AB_DATA_TRANSF;
       }
-      od_storage.restore();
+      storage.restore_od();
       break;
     default:
       return CO_SDO_AB_SUB_UNKNOWN;
@@ -299,7 +299,7 @@ CO_SDO_abortCode_t canopen::program_control_callback(CO_ODF_arg_t *p_odf_arg)
 
   control = static_cast<bootloader_program_control_t>(*(p_odf_arg->data));
 
-  state = bootloader_request(control, nid);
+  state = bootloader_request(control, active_nid);
   switch (state) {
     case BOOTLAODER_TIMEOUT:
       return CO_SDO_AB_TIMEOUT; //todo ist dieser Errorcode hier OK? Ist eigentlich SDO Timeout
@@ -1019,21 +1019,35 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval, u8 wdt)
 {
   CO_ReturnError_t co_result;
   BaseType_t os_result;
-  u8 new_nid;
+  u8 persistent_nid;
+  u8 pending_nid;
   u16 dummy;
 
-  if (nid == 0) {
-    nid = CO_LSS_NODE_ID_ASSIGNMENT;
-  }
+  persistent_nid = 0;
+  pending_nid = 0;
+  this->active_nid = CO_LSS_NODE_ID_ASSIGNMENT;
 
   /* Objektverzeichnis Festwerte eintragen */
   od_set_defaults();
 
-  /* Objektverzeichnis NVM Werte laden */
-  co_result = od_storage.load();
+  /* NVM Werte laden */
+  co_result = storage.load_od();
   if (co_result != CO_ERROR_NO) {
     log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
     /* Wir laufen mit den Defaultwerten los */
+  }
+
+  /* Abh. vom Aufrufparameter wird die Persistent NID vom NVM geladen */
+  if (nid == 0) {
+    co_result = storage.load_lss(&persistent_nid, &dummy);
+    if (co_result != CO_ERROR_NO) {
+      /* NVM nicht initialisiert oder fehlerhaft */
+      log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
+      persistent_nid = CO_LSS_NODE_ID_ASSIGNMENT;
+    }
+    pending_nid = persistent_nid;
+  } else {
+    pending_nid = nid;
   }
 
   /* CANopenNode, LSS initialisieren */
@@ -1042,16 +1056,13 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval, u8 wdt)
     log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
     return co_result;
   }
-  co_result = CO_CANinit(CAN_MODULE_A, this->bit);
+  co_result = CO_CANinit(CAN_MODULE_A, this->active_bit);
   if (co_result != CO_ERROR_NO) {
     CO_delete(CAN_MODULE_A);
     log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
     return co_result;
   }
-
-  //todo Node ID aus nvm wiederherstellen, pr"ufen
-
-  co_result = CO_LSSinit(nid, this->bit);
+  co_result = CO_LSSinit(pending_nid, this->active_bit);
   if (co_result != CO_ERROR_NO) {
     CO_delete(CAN_MODULE_A);
     log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
@@ -1065,15 +1076,16 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval, u8 wdt)
   do {
     wdt_trigger(wdt);
     (void)CO_CANrxWait(CO->CANmodule[0], WDT_MAX_DELAY);
-    CO_LSSslave_process(CO->LSSslave, this->bit, nid, &dummy, &new_nid);
-  } while (new_nid == CO_LSS_NODE_ID_ASSIGNMENT);
-  if (new_nid != nid) {
-    log_printf(LOG_NOTICE, NOTE_LSS, new_nid);
+    CO_LSSslave_process(CO->LSSslave, this->active_bit, this->active_nid,
+                        &dummy, &pending_nid);
+  } while (pending_nid == CO_LSS_NODE_ID_ASSIGNMENT);
+  if (pending_nid != nid) {
+    log_printf(LOG_NOTICE, NOTE_LSS, pending_nid);
   }
-  nid = new_nid;
 
   /* start CANopen */
-  co_result = CO_CANopenInit(nid);
+  this->active_nid = pending_nid;
+  co_result = CO_CANopenInit(this->active_nid);
   if (co_result != CO_ERROR_NO) {
     log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
     return co_result;
@@ -1081,7 +1093,6 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval, u8 wdt)
 
   /* Infos eintragen */
   this->worker_interval = interval;
-  this->nid = nid;
   threadMain_init(this->main_interval); /* ms Interval */
 
   /* OD Callbacks */
@@ -1117,6 +1128,17 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval, u8 wdt)
   return CO_ERROR_NO;
 }
 
+void canopen::set_nid(u8 nid)
+{
+  u8 persistent_nid;
+  u16 persistent_bit;
+
+  if ((nid > 0) && (nid <= 127)) {
+    (void)storage.load_lss(&persistent_nid, &persistent_bit);
+    (void)storage.save_lss(nid, persistent_bit);
+  }
+}
+
 void canopen::deinit(void)
 {
   /* RX Handlerthread synchronisieren. Der Thread suspended sich dann
@@ -1129,13 +1151,13 @@ void canopen::deinit(void)
   CO_delete(CAN_MODULE_A);
 
   this->reset = CO_RESET_NOT;
-  this->nid = 0;
+  this->active_nid = 0;
 }
 
 void canopen::process(void)
 {
   u16 dummy;
-  u8 new_nid;
+  u8 pending_nid;
   CO_ReturnError_t result;
   CO_NMT_reset_cmd_t reset;
 
@@ -1150,15 +1172,16 @@ void canopen::process(void)
   if (reset != CO_RESET_NOT){
     log_printf(LOG_DEBUG, DEBUG_CANOPEN_RESET, reset);
 
-    CO_LSSslave_process(CO->LSSslave, this->bit, this->nid, &dummy, &new_nid);
-    if (new_nid != this->nid) {
-      log_printf(LOG_NOTICE, NOTE_LSS, new_nid);
+    CO_LSSslave_process(CO->LSSslave, this->active_bit, this->active_nid,
+                        &dummy, &pending_nid);
+    if (pending_nid != this->active_nid) {
+      log_printf(LOG_NOTICE, NOTE_LSS, pending_nid);
     }
 
     switch (reset) {
       case CO_RESET_COMM:
         deinit();
-        result = init(new_nid, this->worker_interval, -1); //todo
+        result = init(pending_nid, this->worker_interval, -1);
         if (result != CO_ERROR_NO) {
           globals.request_reboot();
         }

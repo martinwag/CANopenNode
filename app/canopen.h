@@ -22,7 +22,7 @@
 #include "nbtyp.h"
 #include "can.h"
 
-#include "od_storage.h"
+#include "canopen_storage.h"
 #include "canopen_errors.h"
 
 
@@ -32,9 +32,9 @@
 class canopen: public canopen_errors {
   private:
     CO_NMT_reset_cmd_t reset;         /*!< Resetanforderung */
-    u8 nid;                           /*!< Eigene CANopen Node ID */
-    static const u16 bit = 1000;      /*!< CANopen Bitrate */
-    class od_storage od_storage;      /*!< OD Parameter */
+    u8 active_nid;                    /*!< Eigene CANopen Node ID */
+    static const u16 active_bit = 1000; /*!< Standard Bitrate */
+    class canopen_storage storage;    /*!< OD Parameter */
     static const u8 main_interval = 50; /*!< ms, max. Wartezeit auf Events in process() */
     u32 worker_interval;              /*!< CO Thread Intervall */
     static QueueHandle_t nmt_event_queue; /*!< per <nmt_event()> eingetragene Queue */
@@ -259,6 +259,13 @@ class canopen: public canopen_errors {
      * @return CO_ERROR_NO wenn erfolgreich
      */
     CO_ReturnError_t init(u8 nid, u32 interval, u8 wdt);
+
+    /**
+     * Node ID vorgeben. Ist diese g"ultig wird sie als persistent Node ID abgelegt.
+     *
+     * @param nid Node ID
+     */
+    void set_nid(u8 nid);
 
     /**
      * CANopen Stack deinitialisieren
