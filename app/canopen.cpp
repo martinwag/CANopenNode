@@ -1058,12 +1058,16 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval)
 #endif
 
   /* Get Node ID */
-  do {
-    housekeeping_main();
-    (void)CO_CANrxWait(CO->CANmodule[0], 10);
+  while (true) {
     CO_LSSslave_process(CO->LSSslave, this->active_bit, this->active_nid,
                         &dummy, &pending_nid);
-  } while (pending_nid == CO_LSS_NODE_ID_ASSIGNMENT);
+    if (pending_nid != CO_LSS_NODE_ID_ASSIGNMENT) {
+      break;
+    }
+
+    housekeeping_main();
+    (void)CO_CANrxWait(CO->CANmodule[0], this->main_interval);
+  };
   if (pending_nid != persistent_nid) {
     log_printf(LOG_NOTICE, NOTE_LSS, pending_nid);
   }
