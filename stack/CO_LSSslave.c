@@ -215,7 +215,7 @@ static void CO_LSSslave_serviceConfig(
             LSSslave->TXbuff->data[1] = CO_LSS_CFG_STORE_OK;
 
             if (LSSslave->pFunctLSScfgStore == NULL) {
-                /* setting bit timing is not supported. Reply error*/
+                /* storing is not supported. Reply error */
                 LSSslave->TXbuff->data[1] = CO_LSS_CFG_STORE_NOT_SUPPORTED;
             }
             else {
@@ -342,8 +342,8 @@ static void CO_LSSslave_receive(void *object, const CO_CANrxMsg_t *msg)
 CO_ReturnError_t CO_LSSslave_init(
         CO_LSSslave_t          *LSSslave,
         CO_LSS_address_t        lssAddress,
-        uint16_t                persistentBitRate,
-        uint8_t                 persistentNodeID,
+        uint16_t                pendingBitRate,
+        uint8_t                 pendingNodeID,
         CO_CANmodule_t         *CANdevRx,
         uint16_t                CANdevRxIdx,
         uint32_t                CANidLssMaster,
@@ -353,7 +353,7 @@ CO_ReturnError_t CO_LSSslave_init(
 {
     /* verify arguments */
     if (LSSslave==NULL || CANdevRx==NULL || CANdevTx==NULL ||
-        !CO_LSS_nodeIdValid(persistentNodeID)) {
+        !CO_LSS_nodeIdValid(pendingNodeID)) {
         return CO_ERROR_ILLEGAL_ARGUMENT;
     }
 
@@ -361,8 +361,8 @@ CO_ReturnError_t CO_LSSslave_init(
     LSSslave->lssState = CO_LSS_STATE_WAITING;
     CO_memset((uint8_t*)&LSSslave->lssSelect, 0, sizeof(LSSslave->lssSelect));
 
-    LSSslave->pendingBitRate = persistentBitRate;
-    LSSslave->pendingNodeID = persistentNodeID;
+    LSSslave->pendingBitRate = pendingBitRate;
+    LSSslave->pendingNodeID = pendingNodeID;
     LSSslave->activeNodeID = 0;
     LSSslave->pFunctLSScheckBitRate = NULL;
     LSSslave->functLSScheckBitRateObject = NULL;
@@ -435,30 +435,15 @@ void CO_LSSslave_initCfgStoreCallback(
 
 
 /******************************************************************************/
-CO_LSSslave_cmd_t CO_LSSslave_process(
+void CO_LSSslave_process(
         CO_LSSslave_t          *LSSslave,
         uint16_t                activeBitRate,
         uint8_t                 activeNodeId,
         uint16_t               *pendingBitRate,
         uint8_t                *pendingNodeId)
 {
-    CO_LSSslave_cmd_t cmd = CO_LSS_SLAVE_CMD_NOT;
-
     LSSslave->activeNodeID = activeNodeId;
     *pendingBitRate = LSSslave->pendingBitRate;
     *pendingNodeId = LSSslave->pendingNodeID;
-
-    if (activeNodeId==CO_LSS_NODE_ID_ASSIGNMENT &&
-        LSSslave->pendingNodeID>=0x01 && LSSslave->pendingNodeID<=0x7f) {
-        /* Normally, node id is applied by NMT master requesting comm reset. This
-         * is not possible in this case as our NMT server is still in NMT reset
-         * communication sub state. According to DSP 305 8.3.1, after setting a
-         * valid node ID, we have to continue NMT initialization. */
-        cmd = CO_LSS_SLAVE_CONTINUE_NMT_INIT;
-    }
-
-    /* Changing Bit Rate is done by callback functions */
-
-    return cmd;
 }
 

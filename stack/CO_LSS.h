@@ -204,7 +204,6 @@ static const uint16_t CO_LSS_bitTimingTableLookup[]  = {
  */
 #define CO_LSS_NODE_ID_ASSIGNMENT 0xFFU 
 
-
 /**
  * Macro to check if node id is valid
  */

@@ -58,14 +58,9 @@ extern "C" {
  * @{
  */
 
-/**
- * Return code for CO_LSSslave_process() that tells application code what to
- * continue with.
+/** @todo #CO_CANsend() is used inside Rx callback, user must ensure that this
+ * function can be used inside interrupt if Rx is done inside interrupt.
  */
-typedef enum{
-    CO_LSS_SLAVE_CMD_NOT  = 0,                /**< Normal return, no action */
-    CO_LSS_SLAVE_CONTINUE_NMT_INIT = 1,       /**< Application must continue with NMT init */
-}CO_LSSslave_cmd_t;
 
 /**
  * LSS slave object.
@@ -75,10 +70,7 @@ typedef struct{
     CO_LSS_state_t          lssState;         /**< #CO_LSS_state_t */
     CO_LSS_address_t        lssSelect;        /**< Received LSS Address */
 
-//    CO_LSS_bitTimingTable_t persistentBitRate;/**< Bit rate value that is stored to LSS slaves NVM */
     uint16_t                pendingBitRate;   /**< Bit rate value that is temporarily configured in volatile memory */
-//    CO_LSS_bitTimingTable_t activeBitRate;    /**< Bit rate, used at the CAN interface */
-//    uint8_t                 persistentNodeID; /**< Node ID that is stored to LSS slaves NVM */
     uint8_t                 pendingNodeID;    /**< Node ID that is temporarily configured in volatile memory */
     uint8_t                 activeNodeID;     /**< Node ID used at the CAN interface */
 
@@ -98,10 +90,16 @@ typedef struct{
  *
  * Function must be called in the communication reset section.
  *
+ * Depending on the startup type, pending bit rate and node ID have to be
+ * supplied differently. After #CO_NMT_RESET_NODE or at power up they should
+ * be restored from persitent bit rate and node id. After #CO_NMT_RESET_COMMUNICATION
+ * they have to be supplied from the application and are generally the values
+ * that have been last returned by #CO_LSSslave_process() before resetting.
+ *
  * @param LSSslave This object will be initialized.
  * @param lssAddress LSS address are values from object 0x1018 - Identity
- * @param persistentBitRate stored bit rate from nvm
- * @param persistentNodeID stored node id from nvm or 0xFF - invalid
+ * @param pendingBitRate Bit rate the CAN interface is supposed to have after init
+ * @param pendingNodeID stored node id from nvm or 0xFF - invalid
  * @param CANdevRx CAN device for LSS slave reception.
  * @param CANdevRxIdx Index of receive buffer in the above CAN device.
  * @param CANidLssMaster COB ID for reception
@@ -113,8 +111,8 @@ typedef struct{
 CO_ReturnError_t CO_LSSslave_init(
         CO_LSSslave_t          *LSSslave,
         CO_LSS_address_t        lssAddress,
-        uint16_t                persistentBitRate,
-        uint8_t                 persistentNodeID,
+        uint16_t                pendingBitRate,
+        uint8_t                 pendingNodeID,
         CO_CANmodule_t         *CANdevRx,
         uint16_t                CANdevRxIdx,
         uint32_t                CANidLssMaster,
@@ -125,14 +123,16 @@ CO_ReturnError_t CO_LSSslave_init(
 /**
  * Process LSS communication
  *
- * @param LSSslave
- * @param activeBitRate
- * @param activeNodeId
- * @param pendingBitRate [out]
- * @param pendingNodeId [out]
- * @return #CO_LSSslave_cmd_t: CO_LSS_SLAVE_CMD_NOT or CO_LSS_SLAVE_CONTINUE_NMT_INIT.
+ * - sets currently active node ID and bit rate so master can read it
+ * - get current pending node ID and bit rate
+ *
+ * @param LSSslave This object.
+ * @param activeBitRate Currently active bit rate
+ * @param activeNodeId Currently active node ID
+ * @param pendingBitRate [out] Requested bit rate
+ * @param pendingNodeId [out] Requested node id
  */
-CO_LSSslave_cmd_t CO_LSSslave_process(
+void CO_LSSslave_process(
         CO_LSSslave_t          *LSSslave,
         uint16_t                activeBitRate,
         uint8_t                 activeNodeId,

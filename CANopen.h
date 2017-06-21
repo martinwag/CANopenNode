@@ -220,7 +220,6 @@ CO_ReturnError_t CO_LSSinit(
  * Function must be called in the communication reset section.
  *
  * @param nodeId Node ID of the CANopen device (1 ... 127).
- *
  * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT
  */
 CO_ReturnError_t CO_CANopenInit(
