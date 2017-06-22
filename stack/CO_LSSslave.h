@@ -51,15 +51,202 @@
 extern "C" {
 #endif
 
+#if CO_NO_LSS_SERVER == 1
+
 #include "CO_LSS.h"
 
 /**
  * @addtogroup CO_LSS
+ * @defgroup CO_LSSslave LSS Slave
+ * @ingroup CO_LSS
  * @{
- */
+ *
+ * CANopen Layer Setting Service - server protocol
+ *
+ * The server/slave provides the following services
+ * - node selection via LSS address
+ * - node selection via LSS fastscan
+ * - Inquire LSS address of currently selected node
+ * - Inquire node ID
+ * - Configure bit timing
+ * - Configure node ID
+ * - Activate bit timing parameters
+ * - Store configuration (bit rate and node ID)
+ *
+ * After CAN module start, the LSS server and NMT server are started and then
+ * coexist alongside each other. To achieve this behaviour, the CANopen node
+ * startup process has to be conrolled more detailled. Therefore, the function
+ * CO_init() is split up into the functions #CO_new(), #CO_CANinit(), #CO_LSSinit()
+ * and #CO_CANopenInit().
+ * Moreover, the LSS server needs to pause the NMT server initialization in case
+ * no valid node ID is available at start up.
+ *
+ * ###Example
+ *
+ * It is strongly recommended that the user already has a fully working application
+ * running with the standard (non LSS) version of CANopenNode. This is required
+ * to understand what this example does and where you need to change it for your
+ * requirements.
+ *
+ * The following code is only a suggestion on how to use the LSS server. It is
+ * not a working example! To simplify the code, no error handling is
+ * included. For stable code, those return value evaluations have to be added
+ * to the user code.
+ *
+ * This example is not intended for bare metal targets. If you intend to do can
+ * message receiving inside interrupt, be aware that the callback functions
+ * will be called inside the interrupt handler context!
+ *
+ * \code{.c}
 
-/** @todo #CO_CANsend() is used inside Rx callback, user must ensure that this
- * function can be used inside interrupt if Rx is done inside interrupt.
+ const uint16_t FIRST_BIT = 125;
+ queue changeBitRate;
+ uint8_t activeNid;
+ uint16_t activeBit;
+
+ bool_t checkBitRateCallback(void *object, uint16_t bitRate)
+ {
+     if (validBit(bitRate)) {
+         return true;
+     }
+     return false;
+ }
+
+ void activateBitRateCallback(void *object, uint16_t delay)
+ {
+     int time;
+     time = getCurrentTime();
+     queueSend(&changeBitRate, time, delay);
+ }
+
+ bool_t cfgStoreCallback(void *object, uint8_t id, uint16_t bitRate)
+ {
+     savePersistent(id, bitRate);
+     return true;
+ }
+
+ void start_canopen(uint8_t nid)
+ {
+    uint8_t persistentNid;
+    uint8_t pendingNid;
+    uint16_t persistentBit;
+    uint16_t pendingBit;
+
+    loadPersistent(&persistentNid, &persistentBit);
+
+    if ( ! validBit(persistentBit)) {
+        pendingBit = FIRST_BIT;
+        printf("no bit rate found, defaulting to %d", pendingBit);
+    }
+    else {
+        pendingBit = persistentBit;
+        printf("loaded bit rate from nvm: %d", pendingBit);
+    }
+
+    if (nid == 0) {
+        if ( ! validNid(persistentNid)) {
+            pendingNid = CO_LSS_NODE_ID_ASSIGNMENT;
+            printf("no node id found, needs to be set by LSS. NMT will"
+                   "not be started until valid node id is set");
+        }
+        else {
+            pendingNid = persistentNid;
+            printf("loaded node id from nvm: %d", pendingNid);
+        }
+    }
+    else {
+        pendingNid = nid;
+        printf("node id provided by application: %d", pendingNid);
+    }
+
+    CO_new();
+    CO_CANinit(0, pendingBit);
+    CO_LSSinit(pendingNid, pendingBit);
+    CO_CANsetNormalMode(CO->CANmodule[0]);
+    activeBit = pendingBit;
+
+    CO_LSSslave_initCheckBitRateCallback(CO->LSSslave, NULL, checkBitRateCallback);
+    CO_LSSslave_initActivateBitRateCallback(CO->LSSslave, NULL, activateBitRateCallback);
+    CO_LSSslave_initCfgStoreCallback(CO->LSSslave, NULL, cfgStoreCallback);
+
+    while (1) {
+        CO_LSSslave_process(CO->LSSslave, activeBit, activeNid,
+                            &pendingBit, &pendingNid);
+        if (pendingNid != CO_LSS_NODE_ID_ASSIGNMENT) {
+             printf("node ID has been found: %d", pendingNid);
+             break;
+        }
+
+        if ( ! queueEmpty(&changeBitRate)) {
+            printf("bit rate change requested: %d", pendingBit);
+            int time;
+            uint16_t delay;
+            queueReceive(&changeBitRate, time, delay);
+            delayUntil(time + delay);
+            CO_CANsetBitrate(CO->CANmodule[0], pendingBit);
+            delay(delay);
+        }
+
+        printf("waiting for node id");
+        CO_CANrxWait(CO->CANmodule[0]);
+    }
+
+    CO_CANopenInit(pendingNid);
+    activeNid = pendingNid;
+
+    printf("from this on, initialization doesn't differ to non-LSS version"
+           "You can now intialize your CO_CANrxWait() thread or interrupt");
+ }
+
+ void main(void)
+ {
+     uint8_t pendingNid;
+     uint16_t pendingBit;
+
+     printf("like example in dir \"example\"");
+
+     CO_NMT_reset_cmd_t reset = CO_RESET_NOT;
+     uint16_t timer1msPrevious;
+
+     start_canopen(0);
+
+     reset = CO_RESET_NOT;
+     timer1msPrevious = CO_timer1ms;
+     while(reset == CO_RESET_NOT){
+         printf("loop for normal program execution");
+         uint16_t timer1msCopy, timer1msDiff;
+
+         timer1msCopy = CO_timer1ms;
+         timer1msDiff = timer1msCopy - timer1msPrevious;
+         timer1msPrevious = timer1msCopy;
+
+         reset = CO_process(CO, timer1msDiff, NULL);
+
+         CO_LSSslave_process(CO->LSSslave, activeBit, activeNid,
+                                           &pendingBit, &pendingNid);
+         if (reset == CO_RESET_COMM) {
+             printf("restarting CANopen using pending node ID %d", pendingNid);
+             CO_delete(0);
+             start_canopen(pendingNid);
+             reset = CO_RESET_NOT;
+         }
+         if ( ! queueEmpty(&changeBitRate)) {
+             printf("bit rate change requested: %d", pendingBit);
+             int time;
+             uint16_t delay;
+             queueReceive(&changeBitRate, time, delay);
+             printf("Disabling CANopen for givent time");
+             pauseReceiveThread();
+             delayUntil(time + delay);
+             CO_CANsetBitrate(CO->CANmodule[0], pendingBit);
+             delay(delay);
+             resumeReceiveThread();
+             printf("Re-enabling CANopen after bit rate switch");
+         }
+     }
+ }
+
+ * \endcode
  */
 
 /**
@@ -96,16 +283,20 @@ typedef struct{
  * they have to be supplied from the application and are generally the values
  * that have been last returned by #CO_LSSslave_process() before resetting.
  *
+ * @remark The LSS address needs to be unique on the network. For this, the 128
+ * bit wide identity object (1018h) is used. Therefore, this object has to be fully
+ * initalized before passing it to this function.
+ *
  * @param LSSslave This object will be initialized.
- * @param lssAddress LSS address are values from object 0x1018 - Identity
- * @param pendingBitRate Bit rate the CAN interface is supposed to have after init
- * @param pendingNodeID stored node id from nvm or 0xFF - invalid
+ * @param lssAddress LSS address
+ * @param pendingBitRate Bit rate of the CAN interface.
+ * @param pendingNodeID Node ID or 0xFF - invalid.
  * @param CANdevRx CAN device for LSS slave reception.
  * @param CANdevRxIdx Index of receive buffer in the above CAN device.
- * @param CANidLssMaster COB ID for reception
+ * @param CANidLssMaster COB ID for reception.
  * @param CANdevTx CAN device for LSS slave transmission.
  * @param CANdevTxIdx Index of transmit buffer in the above CAN device.
- * @param CANidLssSlave COB ID for transmission
+ * @param CANidLssSlave COB ID for transmission.
  * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
  */
 CO_ReturnError_t CO_LSSslave_init(
@@ -124,7 +315,7 @@ CO_ReturnError_t CO_LSSslave_init(
  * Process LSS communication
  *
  * - sets currently active node ID and bit rate so master can read it
- * - get current pending node ID and bit rate
+ * - hands over pending node ID and bit rate to user application
  *
  * @param LSSslave This object.
  * @param activeBitRate Currently active bit rate
@@ -151,7 +342,7 @@ void CO_LSSslave_process(
  * inside an ISR
  *
  * @param LSSslave This object.
- * @param object Pointer to object, which will be passed to #pFunctLSScheckBitRate. Can be NULL
+ * @param object Pointer to object, which will be passed to pFunctLSScheckBitRate(). Can be NULL
  * @param pFunctLSScheckBitRate Pointer to the callback function. Not called if NULL.
  */
 void CO_LSSslave_initCheckBitRateCallback(
@@ -173,8 +364,8 @@ void CO_LSSslave_initCheckBitRateCallback(
  * inside an ISR
  *
  * @param LSSslave This object.
- * @param object Pointer to object, which will be passed to #pFunctLSSchangeBitRate. Can be NULL
- * @param pFunctLSSchangeBitRate Pointer to the callback function. Not called if NULL.
+ * @param object Pointer to object, which will be passed to pFunctLSSactivateBitRate(). Can be NULL
+ * @param pFunctLSSactivateBitRate Pointer to the callback function. Not called if NULL.
  */
 void CO_LSSslave_initActivateBitRateCallback(
         CO_LSSslave_t          *LSSslave,
@@ -194,7 +385,7 @@ void CO_LSSslave_initActivateBitRateCallback(
  * inside an ISR
  *
  * @param LSSslave This object.
- * @param object Pointer to object, which will be passed to #pFunctLSSchangeBitRate. Can be NULL
+ * @param object Pointer to object, which will be passed to pFunctLSScfgStore(). Can be NULL
  * @param pFunctLSScfgStore Pointer to the callback function. Not called if NULL.
  */
 void CO_LSSslave_initCfgStoreCallback(
@@ -202,8 +393,18 @@ void CO_LSSslave_initCfgStoreCallback(
         void                   *object,
         bool_t                (*pFunctLSScfgStore)(void *object, uint8_t id, uint16_t bitRate));
 
+#else /* CO_NO_LSS_SERVER == 1 */
+
+/**
+ * @addtogroup CO_LSS
+ * @{
+ * If you need documetation for LSS slave usage, add "CO_NO_LSS_SERVER=1" to doxygen
+ * "PREDEFINED" variable.
+ *
+ */
 
 
+#endif /* CO_NO_LSS_SERVER == 1 */
 
 #ifdef __cplusplus
 }

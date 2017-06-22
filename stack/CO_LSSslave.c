@@ -43,12 +43,7 @@
  * to do so, delete this exception statement from your version.
  */
 
-
-#include "CO_driver.h"
-#include "CO_SDO.h"
-#include "CO_Emergency.h"
-#include "CO_NMT_Heartbeat.h"
-#include "CO_LSSslave.h"
+#include "CANopen.h"
 
 /*
  * Helper function - Check if two LSS addresses are equal
@@ -354,6 +349,12 @@ CO_ReturnError_t CO_LSSslave_init(
     /* verify arguments */
     if (LSSslave==NULL || CANdevRx==NULL || CANdevTx==NULL ||
         !CO_LSS_nodeIdValid(pendingNodeID)) {
+        return CO_ERROR_ILLEGAL_ARGUMENT;
+    }
+
+    /* check LSS address for plausibility. As a bare minimum, the vendor
+     * ID and serial number must be set */
+    if (lssAddress.vendorID==0 || lssAddress.serialNumber==0) {
         return CO_ERROR_ILLEGAL_ARGUMENT;
     }
 

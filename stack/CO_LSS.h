@@ -56,9 +56,7 @@ extern "C" {
  * @ingroup CO_CANopen
  * @{
  *
- * CANopen LSS protocol
- *
- * For CAN identifiers see #CO_Default_CAN_ID_t
+ * CANopen Layer Setting Services protocol
  *
  * LSS protocol is according to CiA DSP 305 V3.0.0.
  *
@@ -71,7 +69,20 @@ extern "C" {
  * - Node-ID of the CANopen device
  * - Bit timing parameters of the physical layer (bit rate)
  * - LSS address compliant to the identity object (1018h)
+ *
+ * The connection is established in one of two ways:
+ * - addressing a node by it's 128 bit LSS address. This requires that the
+ *   master already knows the node's LSS address.
+ * - scanning the network for unknown nodes (Fastscan). Using this method,
+ *   unknown devices can be found and configured one by one.
+ *
+ * Be aware that changing the bit rate is a critical step for the network. A
+ * failure will render the network unusable!
+ *
+ * For CAN identifiers see #CO_Default_CAN_ID_t
  */
+
+#if CO_NO_LSS_CLIENT == 1 || CO_NO_LSS_SERVER == 1
 
 /**
  * LSS protocol command specifiers
@@ -209,6 +220,7 @@ static const uint16_t CO_LSS_bitTimingTableLookup[]  = {
  */
 #define CO_LSS_nodeIdValid(nid) ((nid >= 1 && nid <= 0x7F) || nid == CO_LSS_NODE_ID_ASSIGNMENT)
 
+#endif /* CO_NO_LSS_CLIENT == 1 || CO_NO_LSS_SERVER == 1 */
 
 #ifdef __cplusplus
 }
