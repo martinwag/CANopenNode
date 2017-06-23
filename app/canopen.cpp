@@ -28,6 +28,7 @@
 #include "led.h"
 #include "bootloader.h"
 #include "terminal.h"
+#include "system.h"
 
 #include "CANopen.h"
 #include "CO_freertos_threads.h"
@@ -519,9 +520,20 @@ void canopen::od_set_defaults(void)
   globals.get_app_version(&main, &minor, &bugfix, &build);
   OD_identity.revisionNumber = (u32)(main << 24 | minor << 16 | bugfix << 8 | build);
 
+  /* 1018-4 Serial number
+   *
+   * Wir verwenden die Prozessor UID, nicht die Neuberger Seriennummer
+   */
+  id = system_get_uid32();
+  OD_identity.serialNumber = id;
+
   /* 1f56 - Set Program Software Identification */
   id = globals.get_app_checksum();
   OD_programSoftwareIdentification[0] = id;
+
+  /* 0x2111 - 96 Bit UID */
+  system_get_uid96(&OD_UID[ODA_UID_word0], &OD_UID[ODA_UID_word1],
+                   &OD_UID[ODA_UID_word2]);
 }
 
 /**
