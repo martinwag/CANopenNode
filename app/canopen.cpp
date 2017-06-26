@@ -623,6 +623,24 @@ void* canopen::get_od_pointer(u16 index, u8 subindex, size_t size)
 }
 
 /**
+ * LSS Node ID/Bitrate in NVM speichern
+ *
+ * @param nid Node ID
+ * @param bit_rate Bitrate
+ * @return true Erfolgreich
+ */
+bool canopen::store_lss_config_callback(uint8_t nid, uint16_t bit_rate)
+{
+  CO_ReturnError_t result;
+
+  result = storage.save_lss(nid, bit_rate);
+  if (result == CO_ERROR_NO) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Zeitkritische CANopen Abarbeitung
  */
 void canopen::timer_rx_thread(void)
@@ -1030,7 +1048,7 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval)
   /* Abh. vom Aufrufparameter wird die Persistent NID vom NVM geladen */
   if (nid == 0) {
     co_result = storage.load_lss(&persistent_nid, &dummy);
-    if ((co_result != CO_ERROR_NO) || ! CO_LSS_nodeIdValid(persistent_nid)) {
+    if ((co_result != CO_ERROR_NO) || ! CO_LSS_NODE_ID_VALID(persistent_nid)) {
       /* NVM nicht initialisiert oder fehlerhaft */
       log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
       persistent_nid = CO_LSS_NODE_ID_ASSIGNMENT;
@@ -1058,6 +1076,7 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval)
     log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
     return co_result;
   }
+  CO_LSSslave_initCfgStoreCallback(CO->LSSslave, this, store_lss_config_callback_wrapper);
 
   /* start CAN */
   CO_CANsetNormalMode(CO->CANmodule[0]);
@@ -1167,9 +1186,6 @@ void canopen::process(void)
 
     CO_LSSslave_process(CO->LSSslave, this->active_bit, this->active_nid,
                         &dummy, &pending_nid);
-    if (pending_nid != this->active_nid) {
-      log_printf(LOG_NOTICE, NOTE_LSS, pending_nid);
-    }
 
     switch (reset) {
       case CO_RESET_COMM:
@@ -1253,6 +1269,11 @@ BaseType_t canopen::cmd_terminal( char *pcWriteBuffer,
 void canopen::timer_rx_thread_wrapper(void *p)
 {
   reinterpret_cast<canopen*>(p)->timer_rx_thread();
+}
+
+bool_t canopen::store_lss_config_callback_wrapper(void *p_object, uint8_t nid, uint16_t bit_rate)
+{
+  return reinterpret_cast<canopen*>(p_object)->store_lss_config_callback(nid, bit_rate);
 }
 
 CO_SDO_abortCode_t canopen::store_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg)

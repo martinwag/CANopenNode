@@ -60,6 +60,8 @@ class canopen: public canopen_errors {
 
     void *get_od_pointer(u16 index, u8 subindex, size_t size);
 
+    bool store_lss_config_callback(uint8_t nid, uint16_t bitRate);
+
     volatile bool timer_rx_suspend;
     TaskHandle_t timer_rx_handle;
     void timer_rx_thread();
@@ -286,6 +288,7 @@ class canopen: public canopen_errors {
      * @{
      */
     static void timer_rx_thread_wrapper(void *p);
+    static bool_t store_lss_config_callback_wrapper(void *p_object, uint8_t nid, uint16_t bit_rate);
     static CO_SDO_abortCode_t store_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t restore_default_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t cob_id_timestamp_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
