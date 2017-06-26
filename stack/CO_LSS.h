@@ -94,32 +94,34 @@ extern "C" {
  * As identifying method only "LSS fastscan" is supported.
  */
 typedef enum {
-    CO_LSS_SWITCH_STATE_GLOBAL      = 0x04U, /**< Switch state global protocol */
-    CO_LSS_SWITCH_STATE_SEL_VENDOR  = 0x40U, /**< Switch state selective protocol - Vendor ID */
-    CO_LSS_SWITCH_STATE_SEL_PRODUCT = 0x41U, /**< Switch state selective protocol - Product code */
-    CO_LSS_SWITCH_STATE_SEL_REV     = 0x42U, /**< Switch state selective protocol - Revision number */
-    CO_LSS_SWITCH_STATE_SEL_SERIAL  = 0x43U, /**< Switch state selective protocol - Serial number */
-    CO_LSS_SWITCH_STATE_SEL         = 0x44U, /**< Switch state selective protocol - Slave response */
-    CO_LSS_CFG_NODE_ID              = 0x11U, /**< Configure node ID protocol */
-    CO_LSS_CFG_BIT_TIMING           = 0x13U, /**< Configure bit timing parameter protocol */
-    CO_LSS_CFG_ACTIVATE_BIT_TIMING  = 0x15U, /**< Activate bit timing parameter protocol */
-    CO_LSS_CFG_STORE                = 0x17U, /**< Store configuration protocol */
-    CO_LSS_INQUIRE_VENDOR           = 0x5AU, /**< Inquire identity vendor-ID protocol */
-    CO_LSS_INQUIRE_PRODUCT          = 0x5BU, /**< Inquire identity product-code protocol */
-    CO_LSS_INQUIRE_REV              = 0x5CU, /**< Inquire identity revision-number protocol */
-    CO_LSS_INQUIRE_SERIAL           = 0x5DU, /**< Inquire identity serial-number protocol */
-    CO_LSS_INQUIRE_NODE_ID          = 0x5EU, /**< Inquire node-ID protocol */
-    CO_LSS_IDENT_FASTSCAN           = 0x51U  /**< LSS Fastscan protocol */
+    CO_LSS_SWITCH_STATE_GLOBAL          = 0x04U, /**< Switch state global protocol */
+    CO_LSS_SWITCH_STATE_SEL_VENDOR      = 0x40U, /**< Switch state selective protocol - Vendor ID */
+    CO_LSS_SWITCH_STATE_SEL_PRODUCT     = 0x41U, /**< Switch state selective protocol - Product code */
+    CO_LSS_SWITCH_STATE_SEL_REV         = 0x42U, /**< Switch state selective protocol - Revision number */
+    CO_LSS_SWITCH_STATE_SEL_SERIAL      = 0x43U, /**< Switch state selective protocol - Serial number */
+    CO_LSS_SWITCH_STATE_SEL             = 0x44U, /**< Switch state selective protocol - Slave response */
+    CO_LSS_CFG_NODE_ID                  = 0x11U, /**< Configure node ID protocol */
+    CO_LSS_CFG_BIT_TIMING               = 0x13U, /**< Configure bit timing parameter protocol */
+    CO_LSS_CFG_ACTIVATE_BIT_TIMING      = 0x15U, /**< Activate bit timing parameter protocol */
+    CO_LSS_CFG_STORE                    = 0x17U, /**< Store configuration protocol */
+    CO_LSS_IDENT_NON_CONFIG_REMOTE_SLAVE= 0x4CU, /**< Identify non configured slave - request */
+    CO_LSS_IDENT_NON_CONFIG_SLAVE       = 0x50U, /**< Identify non configured slave - response */
+    CO_LSS_IDENT_FASTSCAN               = 0x51U, /**< LSS Fastscan protocol */
+    CO_LSS_INQUIRE_VENDOR               = 0x5AU, /**< Inquire identity vendor-ID protocol */
+    CO_LSS_INQUIRE_PRODUCT              = 0x5BU, /**< Inquire identity product-code protocol */
+    CO_LSS_INQUIRE_REV                  = 0x5CU, /**< Inquire identity revision-number protocol */
+    CO_LSS_INQUIRE_SERIAL               = 0x5DU, /**< Inquire identity serial-number protocol */
+    CO_LSS_INQUIRE_NODE_ID              = 0x5EU, /**< Inquire node-ID protocol */
 } CO_LSS_cs_t;
 
 /**
- * Macro to get service type from command specifier
+ * Macro to get service type group from command specifier
  * @{*/
-#define CO_LSS_cs_serviceIsSwitchStateGlobal(cs) (cs == CO_LSS_SWITCH_STATE_GLOBAL)
-#define CO_LSS_cs_serviceIsSwitchStateSelective(cs) (cs >= CO_LSS_SWITCH_STATE_SEL_VENDOR && cs <= CO_LSS_SWITCH_STATE_SEL)
-#define CO_LSS_cs_serviceIsConfig(cs) (cs >= CO_LSS_CFG_NODE_ID && cs <= CO_LSS_CFG_STORE)
-#define CO_LSS_cs_serviceIsInquire(cs) (cs >= CO_LSS_INQUIRE_VENDOR && cs <= CO_LSS_INQUIRE_NODE_ID)
-#define CO_LSS_cs_serviceIsIdentFastscan(cs) (cs == CO_LSS_IDENT_FASTSCAN)
+#define CO_LSS_CS_SERVICE_IS_SWITCH_GLOBAL(cs) (cs == CO_LSS_SWITCH_STATE_GLOBAL)
+#define CO_LSS_CS_SERVICE_IS_SWITCH_STATE_SELECTIVE(cs) (cs >= CO_LSS_SWITCH_STATE_SEL_VENDOR && cs <= CO_LSS_SWITCH_STATE_SEL)
+#define CO_LSS_CS_SERVICE_IS_CONFIG(cs) (cs >= CO_LSS_CFG_NODE_ID && cs <= CO_LSS_CFG_STORE)
+#define CO_LSS_CS_SERVICE_IS_INQUIRE(cs) (cs >= CO_LSS_INQUIRE_VENDOR && cs <= CO_LSS_INQUIRE_NODE_ID)
+#define CO_LSS_CS_SERVICE_IS_IDENT(cs) (cs >= CO_LSS_IDENT_NON_CONFIG_REMOTE_SLAVE && cs <= CO_LSS_IDENT_FASTSCAN)
 /**@}*/
 
 /**
@@ -208,7 +210,7 @@ static const uint16_t CO_LSS_bitTimingTableLookup[]  = {
 /**
  * Macro to check if index contains valid bit timing
  */
-#define CO_LSS_bitTimingValid(index) (index != 5 && (index >= CO_LSS_BIT_TIMING_1000 && index <= CO_LSS_BIT_TIMING_AUTO))
+#define CO_LSS_BIT_TIMING_VALID(index) (index != 5 && (index >= CO_LSS_BIT_TIMING_1000 && index <= CO_LSS_BIT_TIMING_AUTO))
 
 /**
  * Invalid node ID triggers node ID assignment
@@ -218,7 +220,16 @@ static const uint16_t CO_LSS_bitTimingTableLookup[]  = {
 /**
  * Macro to check if node id is valid
  */
-#define CO_LSS_nodeIdValid(nid) ((nid >= 1 && nid <= 0x7F) || nid == CO_LSS_NODE_ID_ASSIGNMENT)
+#define CO_LSS_NODE_ID_VALID(nid) ((nid >= 1 && nid <= 0x7F) || nid == CO_LSS_NODE_ID_ASSIGNMENT)
+
+/**
+ * Macro to check if two LSS addresses are equal
+ */
+#define CO_LSS_ADDRESS_EQUAL(/*CO_LSS_address_t*/ a1, /*CO_LSS_address_t*/ a2) \
+     (a1.productCode == a2.productCode &&         \
+      a1.revisionNumber == a2.revisionNumber &&   \
+      a1.serialNumber == a2.serialNumber &&       \
+      a1.vendorID == a2.vendorID)
 
 #endif /* CO_NO_LSS_CLIENT == 1 || CO_NO_LSS_SERVER == 1 */
 

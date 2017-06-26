@@ -44,20 +44,7 @@
  */
 
 #include "CANopen.h"
-
-/*
- * Helper function - Check if two LSS addresses are equal
- */
-static bool CO_LSSslave_addressEqual(CO_LSS_address_t *a1, CO_LSS_address_t *a2)
-{
-  if (a1->productCode == a2->productCode &&
-      a1->revisionNumber == a2->revisionNumber &&
-      a1->serialNumber == a2->serialNumber &&
-      a1->vendorID == a2->vendorID) {
-      return true;
-  }
-  return false;
-}
+#include "CO_LSSslave.h"
 
 /*
  * Helper function - Handle service "switch state global"
@@ -65,8 +52,10 @@ static bool CO_LSSslave_addressEqual(CO_LSS_address_t *a1, CO_LSS_address_t *a2)
 static void CO_LSSslave_serviceSwitchStateGlobal(
     CO_LSSslave_t *LSSslave,
     CO_LSS_cs_t service,
-    uint8_t mode)
+    const CO_CANrxMsg_t *msg)
 {
+    uint8_t mode = msg->data[1];
+
     switch (mode) {
         case CO_LSS_STATE_WAITING:
             LSSslave->lssState = CO_LSS_STATE_WAITING;
@@ -86,8 +75,10 @@ static void CO_LSSslave_serviceSwitchStateGlobal(
 static void CO_LSSslave_serviceSwitchStateSelective(
     CO_LSSslave_t *LSSslave,
     CO_LSS_cs_t service,
-    uint32_t value)
+    const CO_CANrxMsg_t *msg)
 {
+    uint32_t value = CO_getUint32(&msg->data[1]);
+
     if(LSSslave->lssState != CO_LSS_STATE_WAITING) {
         return;
     }
@@ -105,7 +96,7 @@ static void CO_LSSslave_serviceSwitchStateSelective(
         case CO_LSS_SWITCH_STATE_SEL_SERIAL:
             LSSslave->lssSelect.serialNumber = value;
 
-            if (CO_LSSslave_addressEqual(&LSSslave->lssAddress, &LSSslave->lssSelect)) {
+            if (CO_LSS_ADDRESS_EQUAL(LSSslave->lssAddress, LSSslave->lssSelect)) {
                 LSSslave->lssState = CO_LSS_STATE_CONFIGURATION;
 
                 /* send confirmation */
@@ -142,10 +133,10 @@ static void CO_LSSslave_serviceConfig(
     switch (service) {
         case CO_LSS_CFG_NODE_ID:
             nid = msg->data[1];
+            errorCode = CO_LSS_CFG_NODE_ID_OK;
 
-            if (CO_LSS_nodeIdValid(nid)) {
+            if (CO_LSS_NODE_ID_VALID(nid)) {
                 LSSslave->pendingNodeID = nid;
-                errorCode = CO_LSS_CFG_NODE_ID_OK;
             }
             else {
                 errorCode = CO_LSS_CFG_NODE_ID_OUT_OF_RANGE;
@@ -166,15 +157,15 @@ static void CO_LSSslave_serviceConfig(
 
             tableSelector = msg->data[1];
             tableIndex = msg->data[2];
+            errorCode = CO_LSS_CFG_BIT_TIMING_OK;
 
-            if (tableSelector==0 && CO_LSS_bitTimingValid(tableIndex)) {
+            if (tableSelector==0 && CO_LSS_BIT_TIMING_VALID(tableIndex)) {
                 uint16_t bit = CO_LSS_bitTimingTableLookup[tableIndex];
                 bool_t bit_rate_supported  = LSSslave->pFunctLSScheckBitRate(
                     LSSslave->functLSScheckBitRateObject, bit);
 
                 if (bit_rate_supported) {
                     LSSslave->pendingBitRate = bit;
-                    errorCode = CO_LSS_CFG_BIT_TIMING_OK;
                 }
                 else {
                     errorCode = CO_LSS_CFG_BIT_TIMING_OUT_OF_RANGE;
@@ -206,12 +197,11 @@ static void CO_LSSslave_serviceConfig(
             }
             break;
         case CO_LSS_CFG_STORE:
-            LSSslave->TXbuff->data[0] = CO_LSS_CFG_STORE;
-            LSSslave->TXbuff->data[1] = CO_LSS_CFG_STORE_OK;
+            errorCode = CO_LSS_CFG_STORE_OK;
 
             if (LSSslave->pFunctLSScfgStore == NULL) {
                 /* storing is not supported. Reply error */
-                LSSslave->TXbuff->data[1] = CO_LSS_CFG_STORE_NOT_SUPPORTED;
+                errorCode = CO_LSS_CFG_STORE_NOT_SUPPORTED;
             }
             else {
                 bool_t result;
@@ -219,10 +209,13 @@ static void CO_LSSslave_serviceConfig(
                 result = LSSslave->pFunctLSScfgStore(LSSslave->functLSScfgStore,
                     LSSslave->pendingNodeID, LSSslave->pendingBitRate);
                 if (result != true) {
-                    LSSslave->TXbuff->data[1] = CO_LSS_CFG_STORE_FAILED;
+                    errorCode = CO_LSS_CFG_STORE_FAILED;
                 }
             }
+
             /* send confirmation */
+            LSSslave->TXbuff->data[0] = CO_LSS_CFG_STORE;
+            LSSslave->TXbuff->data[1] = errorCode;
             /* we do not use spec-error, always 0 */
             CO_memset(&LSSslave->TXbuff->data[2], 0, 6);
             CO_CANsend(LSSslave->CANdevTx, LSSslave->TXbuff);
@@ -237,7 +230,8 @@ static void CO_LSSslave_serviceConfig(
  */
 static void CO_LSSslave_serviceInquire(
     CO_LSSslave_t *LSSslave,
-    CO_LSS_cs_t service)
+    CO_LSS_cs_t service,
+    const CO_CANrxMsg_t *msg)
 {
     uint32_t value;
 
@@ -274,17 +268,19 @@ static void CO_LSSslave_serviceInquire(
 /*
  * Helper function - Handle service "identify"
  */
-static void CO_LSSslave_serviceIdentFastscan(
+static void CO_LSSslave_serviceIdent(
     CO_LSSslave_t *LSSslave,
     CO_LSS_cs_t service,
-    uint32_t idNumber,
-    uint8_t bitCheck,
-    uint8_t lssSub,
-    uint8_t lssNext)
+    const CO_CANrxMsg_t *msg)
 {
-    if(LSSslave->lssState == CO_LSS_STATE_WAITING) {
-        //todo do fastscan
-    }
+//    uint32_t idNumber = CO_getUint32(&msg->data[1]);
+//    uint8_t bitCheck = msg->data[5];
+//    uint8_t lssSub = msg->data[6];
+//    uint8_t lssNext = msg->data[7];
+//
+//    if(LSSslave->lssState == CO_LSS_STATE_WAITING) {
+//        //todo do fastscan
+//    }
 }
 
 /*
@@ -297,34 +293,26 @@ static void CO_LSSslave_serviceIdentFastscan(
 static void CO_LSSslave_receive(void *object, const CO_CANrxMsg_t *msg)
 {
     CO_LSSslave_t *LSSslave;
-    CO_LSS_cs_t cs;
 
     LSSslave = (CO_LSSslave_t*)object;   /* this is the correct pointer type of the first argument */
 
     if(msg->DLC == 8){
-        cs = msg->data[0];
+        CO_LSS_cs_t cs = msg->data[0];
 
-        if (CO_LSS_cs_serviceIsSwitchStateGlobal(cs)) {
-            uint8_t mode = msg->data[1];
-            CO_LSSslave_serviceSwitchStateGlobal(LSSslave, cs, mode);
+        if (CO_LSS_CS_SERVICE_IS_SWITCH_GLOBAL(cs)) {
+            CO_LSSslave_serviceSwitchStateGlobal(LSSslave, cs, msg);
         }
-        else if (CO_LSS_cs_serviceIsSwitchStateSelective(cs)) {
-            uint32_t value = CO_getUint32(&msg->data[1]);
-            CO_LSSslave_serviceSwitchStateSelective(LSSslave, cs, value);
+        else if (CO_LSS_CS_SERVICE_IS_SWITCH_STATE_SELECTIVE(cs)) {
+            CO_LSSslave_serviceSwitchStateSelective(LSSslave, cs, msg);
         }
-        else if (CO_LSS_cs_serviceIsConfig(cs)) {
+        else if (CO_LSS_CS_SERVICE_IS_CONFIG(cs)) {
             CO_LSSslave_serviceConfig(LSSslave, cs, msg);
         }
-        else if (CO_LSS_cs_serviceIsInquire(cs)) {
-            CO_LSSslave_serviceInquire(LSSslave, cs);
+        else if (CO_LSS_CS_SERVICE_IS_INQUIRE(cs)) {
+            CO_LSSslave_serviceInquire(LSSslave, cs, msg);
         }
-        else if (CO_LSS_cs_serviceIsIdentFastscan(cs)) {
-            /* we only support fastscan */
-            uint32_t idNumber = CO_getUint32(&msg->data[1]);
-            uint8_t bitCheck = msg->data[5];
-            uint8_t lssSub = msg->data[6];
-            uint8_t lssNext = msg->data[7];
-            CO_LSSslave_serviceIdentFastscan(LSSslave, cs, idNumber, bitCheck, lssSub, lssNext);
+        else if (CO_LSS_CS_SERVICE_IS_IDENT(cs)) {
+            CO_LSSslave_serviceIdent(LSSslave, cs, msg);
         }
         else {
             /* No Ack -> Unsupported commands are dropped */
@@ -348,7 +336,7 @@ CO_ReturnError_t CO_LSSslave_init(
 {
     /* verify arguments */
     if (LSSslave==NULL || CANdevRx==NULL || CANdevTx==NULL ||
-        !CO_LSS_nodeIdValid(pendingNodeID)) {
+        !CO_LSS_NODE_ID_VALID(pendingNodeID)) {
         return CO_ERROR_ILLEGAL_ARGUMENT;
     }
 
@@ -364,7 +352,7 @@ CO_ReturnError_t CO_LSSslave_init(
 
     LSSslave->pendingBitRate = pendingBitRate;
     LSSslave->pendingNodeID = pendingNodeID;
-    LSSslave->activeNodeID = 0;
+    LSSslave->activeNodeID = CO_LSS_NODE_ID_ASSIGNMENT;
     LSSslave->pFunctLSScheckBitRate = NULL;
     LSSslave->functLSScheckBitRateObject = NULL;
     LSSslave->pFunctLSSactivateBitRate = NULL;
@@ -403,8 +391,8 @@ void CO_LSSslave_initCheckBitRateCallback(
         bool_t                (*pFunctLSScheckBitRate)(void *object, uint16_t bitRate))
 {
     if(LSSslave != NULL){
-        LSSslave->pFunctLSScheckBitRate = pFunctLSScheckBitRate;
         LSSslave->functLSScheckBitRateObject = object;
+        LSSslave->pFunctLSScheckBitRate = pFunctLSScheckBitRate;
     }
 }
 
@@ -416,8 +404,8 @@ void CO_LSSslave_initActivateBitRateCallback(
         void                  (*pFunctLSSactivateBitRate)(void *object, uint16_t delay))
 {
     if(LSSslave != NULL){
-        LSSslave->pFunctLSSactivateBitRate = pFunctLSSactivateBitRate;
         LSSslave->functLSSactivateBitRateObject = object;
+        LSSslave->pFunctLSSactivateBitRate = pFunctLSSactivateBitRate;
     }
 }
 
@@ -429,8 +417,8 @@ void CO_LSSslave_initCfgStoreCallback(
         bool_t                (*pFunctLSScfgStore)(void *object, uint8_t id, uint16_t bitRate))
 {
   if(LSSslave != NULL){
-      LSSslave->pFunctLSScfgStore = pFunctLSScfgStore;
       LSSslave->functLSScfgStore = object;
+      LSSslave->pFunctLSScfgStore = pFunctLSScfgStore;
   }
 }
 

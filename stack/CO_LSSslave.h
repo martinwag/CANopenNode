@@ -90,8 +90,8 @@ extern "C" {
  *
  * The following code is only a suggestion on how to use the LSS server. It is
  * not a working example! To simplify the code, no error handling is
- * included. For stable code, those return value evaluations have to be added
- * to the user code.
+ * included. For stable code, proper error handling has to be added to the user
+ * code.
  *
  * This example is not intended for bare metal targets. If you intend to do can
  * message receiving inside interrupt, be aware that the callback functions
@@ -114,8 +114,7 @@ extern "C" {
 
  void activateBitRateCallback(void *object, uint16_t delay)
  {
-     int time;
-     time = getCurrentTime();
+     int time = getCurrentTime();
      queueSend(&changeBitRate, time, delay);
  }
 
@@ -135,12 +134,12 @@ extern "C" {
     loadPersistent(&persistentNid, &persistentBit);
 
     if ( ! validBit(persistentBit)) {
+        printf("no bit rate found, defaulting to %d", FIRST_BIT);
         pendingBit = FIRST_BIT;
-        printf("no bit rate found, defaulting to %d", pendingBit);
     }
     else {
+        printf("loaded bit rate from nvm: %d", persistentBit);
         pendingBit = persistentBit;
-        printf("loaded bit rate from nvm: %d", pendingBit);
     }
 
     if (nid == 0) {
@@ -150,13 +149,13 @@ extern "C" {
                    "not be started until valid node id is set");
         }
         else {
+            printf("loaded node id from nvm: %d", persistentNid);
             pendingNid = persistentNid;
-            printf("loaded node id from nvm: %d", pendingNid);
         }
     }
     else {
+        printf("node id provided by application: %d", nid);
         pendingNid = nid;
-        printf("node id provided by application: %d", pendingNid);
     }
 
     CO_new();
@@ -336,7 +335,8 @@ void CO_LSSslave_process(
  * Function initializes callback function, which is called when "config bit
  * timing parameters" is used. The callback function needs to check if the new bit
  * rate is supported by the CANopen device. Callback returns "true" if supported.
- * When no callback is set, LSS server will no-ack the request.
+ * When no callback is set the LSS server will no-ack the request, indicating to
+ * the master that bit rate change is not supported.
  *
  * @remark Depending on the CAN driver implementation, this function is called
  * inside an ISR
@@ -379,7 +379,8 @@ void CO_LSSslave_initActivateBitRateCallback(
  * The callback function gives the user an event to store the corresponding node id and bit rate
  * to NVM. Those values have to be supplied to the init function as "persistent values"
  * after reset. If callback returns "true", success is send to the LSS master. When no
- * callback is set, LSS server will no-ack the request.
+ * callback is set the LSS server will no-ack the request, indicating to the master
+ * that storing is not supported.
  *
  * @remark Depending on the CAN driver implementation, this function is called
  * inside an ISR
