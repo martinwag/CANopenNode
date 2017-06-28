@@ -416,10 +416,10 @@ void CO_LSSslave_initCfgStoreCallback(
         void                   *object,
         bool_t                (*pFunctLSScfgStore)(void *object, uint8_t id, uint16_t bitRate))
 {
-  if(LSSslave != NULL){
-      LSSslave->functLSScfgStore = object;
-      LSSslave->pFunctLSScfgStore = pFunctLSScfgStore;
-  }
+    if(LSSslave != NULL){
+        LSSslave->functLSScfgStore = object;
+        LSSslave->pFunctLSScfgStore = pFunctLSScfgStore;
+    }
 }
 
 

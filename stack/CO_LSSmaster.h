@@ -60,19 +60,24 @@ extern "C" {
  * @defgroup CO_LSSmaster LSS Master
  * @ingroup CO_LSS
  * @{
+ *
+ * @todo some commands can be replied by multiple slaves, with the same content. we need to collect all answers before continuing!
  */
 
 /**
  * Return values of LSS master functions.
  */
 typedef enum {
-    CO_LSSmaster_FASTSCAN_FINISHED  = 2,    /**< No more unconfigured slaves found */
-    CO_LSSmaster_WAITING            = 1,    /**< No response arrived from server yet */
-    CO_LSSmaster_OK                 = 0,    /**< Success, end of communication */
-    CO_LSSmaster_WRONG_ARGUMENTS    = -1,   /**< Invalid argument */
-    CO_LSSmaster_FASTSCAN_NO_ACK    = -2,   /**< No slaves found with given arguments */
-    CO_LSSmaster_NO_ACK             = -3,   /**< Client rejected request */
-    CO_LSSmaster_TIMEOUT            = -4    /**< No reply received */
+    CO_LSSmaster_FASTSCAN_FINISHED   = 2,    /**< No more unconfigured slaves found */
+    CO_LSSmaster_WAIT_SLAVE          = 1,    /**< No response arrived from server yet */
+    CO_LSSmaster_OK                  = 0,    /**< Success, end of communication */
+    CO_LSSmaster_ILLEGAL_ARGUMENT    = -1,   /**< Invalid argument */
+    CO_LSSmaster_FASTSCAN_NO_ACK     = -2,   /**< No slaves found with given arguments */
+    CO_LSSmaster_NO_ACK              = -3,   /**< Client rejected request */
+    CO_LSSmaster_TIMEOUT             = -4,   /**< No reply received */
+    CO_LSSmaster_INVALID_STATE       = -5,   /**< State machine not ready or already processing a request */
+    CO_LSSmaster_OK_ILLEGAL_ARGUMENT = -101, /**< LSS success, slave rejected argument because of non-supported value */
+    CO_LSSmaster_OK_MANUFACTURER     = -102, /**< LSS success, slave rejected argument with manufacturer error code */
 } CO_LSSmaster_return_t;
 
 
@@ -80,11 +85,22 @@ typedef enum {
  * LSS master object.
  */
 typedef struct{
-    uint16_t              timeout;          /**< LSS response timeout in ms */
+    uint16_t         timeout;          /**< LSS response timeout in ms */
 
-    uint8_t               lssState;         /**< #CO_LSS_state_t of the currently active slave */
-    CO_LSS_address_t      lssAddress;       /**< #CO_LSS_address_t of the currently active slave */
+    uint8_t          state;            /**< Slave is currently selected */
+    uint8_t          command;          /**< Active command */
+    uint16_t         timeoutTimer;     /**< Timeout timer for LSS communication */
 
+
+    volatile bool_t  CANrxNew;         /**< Flag indicates, if new SDO message received from CAN bus. It is not cleared, until received message is completely processed. */
+    volatile uint8_t CANrxData[8];     /**< 8 data bytes of the received message */
+
+
+    void           (*pFunctSignal)(void *object); /**< From CO_LSSmaster_initCallback() or NULL */
+    void            *functSignalObject;/**< Pointer to object */
+
+    CO_CANmodule_t  *CANdevTx;         /**< From #CO_LSSslave_init() */
+    CO_CANtx_t      *TXbuff;           /**< CAN transmit buffer */
 }CO_LSSmaster_t;
 
 
@@ -93,7 +109,7 @@ typedef struct{
  *
  * Function must be called in the communication reset section. todo?
  * 
- * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT. todo
+ * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
  */
 CO_ReturnError_t CO_LSSmaster_init(
         CO_LSSmaster_t         *LSSmaster,
@@ -117,12 +133,32 @@ CO_ReturnError_t CO_LSSmaster_init(
  * value must be selected "as high as necessary and as low as possible". CiA does
  * neither specify nor recommend a value.
  *
+ * @remark This timeout is per-transfer. If a command internally needs multiple
+ * transfers to complete, this timeout is applied on each transfer.
+ *
  * @param LSSmaster This object.
- * @param timeout
+ * @param timeout timeout value in ms
  */
 void CO_LSSmaster_changeTimeout(
         CO_LSSmaster_t         *LSSmaster,
         uint16_t                timeout_ms);
+
+
+/**
+ * Initialize LSSserverRx callback function.
+ *
+ * Function initializes optional callback function, which is called after new
+ * message is received from the CAN bus. Function may wake up external task,
+ * which processes mainline CANopen functions.
+ *
+ * @param SDOclient This object.
+ * @param object Pointer to object, which will be passed to pFunctSignal(). Can be NULL
+ * @param pFunctSignal Pointer to the callback function. Not called if NULL.
+ */
+void CO_LSSmaster_initCallback(
+        CO_LSSmaster_t         *LSSmaster,
+        void                   *object,
+        void                  (*pFunctSignal)(void *object));
 
 
 /**
@@ -229,11 +265,15 @@ CO_LSSmaster_return_t CO_LSSmaster_configureStore(
 /**
  * Request LSS activate bit timing
  *
- * The current "pending" bit rate in LSS slave is applied
- * Be aware that changing the bit rate is a critical step for the network. A
- * failure will render the network unusable!
+ * The current "pending" bit rate in LSS slave is applied.
  *
- * This function needs all slaves to be selected.
+ * Be aware that changing the bit rate is a critical step for the network. A
+ * failure will render the network unusable! Therefore, this function only
+ * should be called if the following conditions are met:
+ * - all slaves support changing bit timing
+ * - new bit timing is successfully set as "pending" in all slaves
+ * - all slaves have to activate the new bit timing roughly at the same time.
+ *   Therefore this function needs all slaves to be selected.
  *
  * @param LSSmaster This object.
  * @param switchDelay_ms delay that is applied by the slave once before and
