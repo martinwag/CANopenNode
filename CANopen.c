@@ -202,6 +202,9 @@
 #endif
 
 
+#if CO_NO_TRACE > 0
+static uint32_t CO_traceBufferSize[CO_NO_TRACE];
+#endif
 
 /******************************************************************************/
 CO_ReturnError_t CO_new(void)
@@ -209,9 +212,6 @@ CO_ReturnError_t CO_new(void)
     int16_t i;
 #ifndef CO_USE_GLOBALS
     uint16_t errCnt;
-#endif
-#if CO_NO_TRACE > 0
-    uint32_t CO_traceBufferSize[CO_NO_TRACE];
 #endif
 
     /* Verify parameters from CO_OD */
