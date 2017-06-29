@@ -92,8 +92,8 @@ typedef struct{
     uint16_t         timeoutTimer;     /**< Timeout timer for LSS communication */
 
 
-    volatile bool_t  CANrxNew;         /**< Flag indicates, if new SDO message received from CAN bus. It is not cleared, until received message is completely processed. */
-    volatile uint8_t CANrxData[8];     /**< 8 data bytes of the received message */
+    volatile bool_t  CANrxNew;         /**< Flag indicates, if new LSS message is received from CAN bus. It needs to be cleared when received message is completely processed. */
+    uint8_t          CANrxData[8];     /**< 8 data bytes of the received message */
 
 
     void           (*pFunctSignal)(void *object); /**< From CO_LSSmaster_initCallback() or NULL */
