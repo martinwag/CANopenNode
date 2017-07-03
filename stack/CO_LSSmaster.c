@@ -135,12 +135,8 @@ static CO_LSSmaster_return_t CO_LSSmaster_check_timeout(
 {
     CO_LSSmaster_return_t ret = CO_LSSmaster_WAIT_SLAVE;
 
-    //if (LSSmaster->timeoutTimer < LSSmaster->timeout) { todo what does this line?
-        LSSmaster->timeoutTimer += timeDifference_ms;
-    //}
+    LSSmaster->timeoutTimer += timeDifference_ms;
     if (LSSmaster->timeoutTimer >= LSSmaster->timeout) {
-        LSSmaster->state = CO_LSSmaster_STATE_WAITING;
-        LSSmaster->command = CO_LSSmaster_COMMAND_WAITING;
         LSSmaster->timeoutTimer = 0;
         ret = CO_LSSmaster_TIMEOUT;
     }
@@ -230,6 +226,10 @@ static CO_LSSmaster_return_t CO_LSSmaster_switchStateSelectInitiate(
 {
   CO_LSSmaster_return_t ret;
 
+  if (LSSmaster == NULL){
+      return CO_LSSmaster_ILLEGAL_ARGUMENT;
+  }
+
   if (lssAddress != NULL) {
       /* switch state select specific using LSS address */
       LSSmaster->state = CO_LSSmaster_STATE_CFG_SLECTIVE;
@@ -237,14 +237,18 @@ static CO_LSSmaster_return_t CO_LSSmaster_switchStateSelectInitiate(
       LSSmaster->timeoutTimer = 0;
 
       CLEAR_CANrxNew();
-      CO_memset(&LSSmaster->TXbuff->data[1], 0, 7);
+      CO_memset(&LSSmaster->TXbuff->data[6], 0, 3);
       LSSmaster->TXbuff->data[0] = CO_LSS_SWITCH_STATE_SEL_VENDOR;
+      CO_setUint32(&LSSmaster->TXbuff->data[1], lssAddress->vendorID);
       CO_CANsend(LSSmaster->CANdevTx, LSSmaster->TXbuff);
       LSSmaster->TXbuff->data[0] = CO_LSS_SWITCH_STATE_SEL_PRODUCT;
+      CO_setUint32(&LSSmaster->TXbuff->data[1], lssAddress->productCode);
       CO_CANsend(LSSmaster->CANdevTx, LSSmaster->TXbuff);
       LSSmaster->TXbuff->data[0] = CO_LSS_SWITCH_STATE_SEL_REV;
+      CO_setUint32(&LSSmaster->TXbuff->data[1], lssAddress->revisionNumber);
       CO_CANsend(LSSmaster->CANdevTx, LSSmaster->TXbuff);
       LSSmaster->TXbuff->data[0] = CO_LSS_SWITCH_STATE_SEL_SERIAL;
+      CO_setUint32(&LSSmaster->TXbuff->data[1], lssAddress->serialNumber);
       CO_CANsend(LSSmaster->CANdevTx, LSSmaster->TXbuff);
 
       ret = CO_LSSmaster_WAIT_SLAVE;
@@ -273,6 +277,10 @@ static CO_LSSmaster_return_t CO_LSSmaster_switchStateSelectWait(
         uint16_t                timeDifference_ms)
 {
     CO_LSSmaster_return_t ret;
+
+    if (LSSmaster == NULL){
+        return CO_LSSmaster_ILLEGAL_ARGUMENT;
+    }
 
     if (IS_CANrxNew()) {
         uint8_t cs = LSSmaster->CANrxData[0];
@@ -316,6 +324,15 @@ CO_LSSmaster_return_t CO_LSSmaster_switchStateSelect(
         ret = CO_LSSmaster_switchStateSelectWait(LSSmaster, timeDifference_ms);
     }
 
+    if (ret != CO_LSSmaster_WAIT_SLAVE) {
+        /* finished */
+        LSSmaster->command = CO_LSSmaster_COMMAND_WAITING;
+    }
+    if (ret < CO_LSSmaster_OK) {
+        /* switching failed, go back to waiting */
+        LSSmaster->state=CO_LSSmaster_STATE_WAITING;
+        LSSmaster->command = CO_LSSmaster_COMMAND_WAITING;
+    }
     return ret;
 }
 
@@ -376,6 +393,10 @@ static CO_LSSmaster_return_t CO_LSSmaster_configureCheckWait(
 {
     CO_LSSmaster_return_t ret;
 
+    if (LSSmaster == NULL){
+        return CO_LSSmaster_ILLEGAL_ARGUMENT;
+    }
+
     if (IS_CANrxNew()) {
         uint8_t cs = LSSmaster->CANrxData[0];
         uint8_t errorCode = LSSmaster->CANrxData[1];
@@ -400,6 +421,10 @@ static CO_LSSmaster_return_t CO_LSSmaster_configureCheckWait(
         ret = CO_LSSmaster_check_timeout(LSSmaster, timeDifference_ms);
     }
 
+    if (ret != CO_LSSmaster_WAIT_SLAVE) {
+        /* finished */
+        LSSmaster->command = CO_LSSmaster_COMMAND_WAITING;
+    }
     return ret;
 }
 
@@ -453,6 +478,10 @@ CO_LSSmaster_return_t CO_LSSmaster_configureBitTiming(
                 CO_LSS_CFG_BIT_TIMING);
     }
 
+    if (ret != CO_LSSmaster_WAIT_SLAVE) {
+        /* finished */
+        LSSmaster->command = CO_LSSmaster_COMMAND_WAITING;
+    }
     return ret;
 }
 
@@ -491,6 +520,10 @@ CO_LSSmaster_return_t CO_LSSmaster_configureNodeId(
               CO_LSS_CFG_NODE_ID);
     }
 
+    if (ret != CO_LSSmaster_WAIT_SLAVE) {
+        /* finished */
+        LSSmaster->command = CO_LSSmaster_COMMAND_WAITING;
+    }
     return ret;
 }
 
@@ -527,6 +560,10 @@ CO_LSSmaster_return_t CO_LSSmaster_configureStore(
               CO_LSS_CFG_STORE);
     }
 
+    if (ret != CO_LSSmaster_WAIT_SLAVE) {
+        /* finished */
+        LSSmaster->command = CO_LSSmaster_COMMAND_WAITING;
+    }
     return ret;
 }
 
@@ -567,6 +604,10 @@ static CO_LSSmaster_return_t CO_LSSmaster_inquireInitiate(
         CO_LSSmaster_t         *LSSmaster,
         uint8_t                 cs)
 {
+    if (LSSmaster == NULL){
+        return CO_LSSmaster_ILLEGAL_ARGUMENT;
+    }
+
     CLEAR_CANrxNew();
     LSSmaster->TXbuff->data[0] = cs;
     CO_memset(&LSSmaster->TXbuff->data[1], 0, 7);
@@ -585,6 +626,10 @@ static CO_LSSmaster_return_t CO_LSSmaster_inquireCheckWait(
         uint32_t               *value)
 {
     CO_LSSmaster_return_t ret;
+
+    if (LSSmaster == NULL){
+        return CO_LSSmaster_ILLEGAL_ARGUMENT;
+    }
 
     if (IS_CANrxNew()) {
         uint8_t cs = LSSmaster->CANrxData[0];
@@ -683,6 +728,10 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireLssAddress(
         }
     }
 
+    if (ret != CO_LSSmaster_WAIT_SLAVE) {
+        /* finished */
+        LSSmaster->command = CO_LSSmaster_COMMAND_WAITING;
+    }
     return ret;
 }
 
@@ -713,11 +762,14 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
       uint32_t tmp;
 
       ret = CO_LSSmaster_inquireCheckWait(LSSmaster, timeDifference_ms,
-              CO_LSS_INQUIRE_SERIAL, &tmp);
+              CO_LSS_INQUIRE_NODE_ID, &tmp);
 
       *nodeId = tmp & 0xff;
   }
 
+  if (ret != CO_LSSmaster_WAIT_SLAVE) {
+      LSSmaster->command = CO_LSSmaster_COMMAND_WAITING;
+  }
   return ret;
 }
 
@@ -730,7 +782,9 @@ CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
         CO_LSS_address_t       *lssAddressScanMatch,
         CO_LSS_address_t       *lssAddressFound)
 {
-
+    if (LSSmaster == NULL){
+        return CO_LSSmaster_ILLEGAL_ARGUMENT;
+    }
 
 }
 

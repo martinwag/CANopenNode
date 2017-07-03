@@ -71,11 +71,10 @@ typedef enum {
     CO_LSSmaster_FASTSCAN_FINISHED   = 2,    /**< No more unconfigured slaves found */
     CO_LSSmaster_WAIT_SLAVE          = 1,    /**< No response arrived from server yet */
     CO_LSSmaster_OK                  = 0,    /**< Success, end of communication */
-    CO_LSSmaster_ILLEGAL_ARGUMENT    = -1,   /**< Invalid argument */
-    CO_LSSmaster_FASTSCAN_NO_ACK     = -2,   /**< No slaves found with given arguments */
-    CO_LSSmaster_NO_ACK              = -3,   /**< Client rejected request */
-    CO_LSSmaster_TIMEOUT             = -4,   /**< No reply received */
-    CO_LSSmaster_INVALID_STATE       = -5,   /**< State machine not ready or already processing a request */
+    CO_LSSmaster_TIMEOUT             = -1,   /**< No reply received */
+    CO_LSSmaster_ILLEGAL_ARGUMENT    = -2,   /**< Invalid argument */
+    CO_LSSmaster_FASTSCAN_NO_ACK     = -3,   /**< No slaves found with given arguments */
+    CO_LSSmaster_INVALID_STATE       = -4,   /**< State machine not ready or already processing a request */
     CO_LSSmaster_OK_ILLEGAL_ARGUMENT = -101, /**< LSS success, slave rejected argument because of non-supported value */
     CO_LSSmaster_OK_MANUFACTURER     = -102, /**< LSS success, slave rejected argument with manufacturer error code */
 } CO_LSSmaster_return_t;
@@ -91,10 +90,8 @@ typedef struct{
     uint8_t          command;          /**< Active command */
     uint16_t         timeoutTimer;     /**< Timeout timer for LSS communication */
 
-
     volatile bool_t  CANrxNew;         /**< Flag indicates, if new LSS message is received from CAN bus. It needs to be cleared when received message is completely processed. */
     uint8_t          CANrxData[8];     /**< 8 data bytes of the received message */
-
 
     void           (*pFunctSignal)(void *object); /**< From CO_LSSmaster_initCallback() or NULL */
     void            *functSignalObject;/**< Pointer to object */
@@ -175,7 +172,8 @@ void CO_LSSmaster_initCallback(
  * @param timeDifference_ms Time difference from previous function call in
  * [milliseconds]. Zero when request is started.
  * @param lssAddress LSS target address. If NULL, all slaves are selected
- * @return todo
+ * @return #CO_LSSmaster_ILLEGAL_ARGUMENT,  #CO_LSSmaster_INVALID_STATE,
+ * #CO_LSSmaster_WAIT_SLAVE, #CO_LSSmaster_OK, #CO_LSSmaster_TIMEOUT
  */
 CO_LSSmaster_return_t CO_LSSmaster_switchStateSelect(
         CO_LSSmaster_t         *LSSmaster,
@@ -190,7 +188,8 @@ CO_LSSmaster_return_t CO_LSSmaster_switchStateSelect(
  * device is selected.
  *
  * @param LSSmaster This object.
- * @return todo
+ * @return #CO_LSSmaster_ILLEGAL_ARGUMENT,  #CO_LSSmaster_INVALID_STATE,
+ * #CO_LSSmaster_OK
  */
 CO_LSSmaster_return_t CO_LSSmaster_switchStateDeselect(
         CO_LSSmaster_t         *LSSmaster);
@@ -210,7 +209,9 @@ CO_LSSmaster_return_t CO_LSSmaster_switchStateDeselect(
  * @param timeDifference_ms Time difference from previous function call in
  * [milliseconds]. Zero when request is started.
  * @param bit new bit rate
- * @return todo
+ * @return #CO_LSSmaster_ILLEGAL_ARGUMENT,  #CO_LSSmaster_INVALID_STATE,
+ * #CO_LSSmaster_WAIT_SLAVE, #CO_LSSmaster_OK, #CO_LSSmaster_TIMEOUT,
+ * #CO_LSSmaster_OK_MANUFACTURER, #CO_LSSmaster_OK_ILLEGAL_ARGUMENT
  */
 CO_LSSmaster_return_t CO_LSSmaster_configureBitTiming(
         CO_LSSmaster_t         *LSSmaster,
@@ -233,7 +234,9 @@ CO_LSSmaster_return_t CO_LSSmaster_configureBitTiming(
  * [milliseconds]. Zero when request is started.
  * @param nodeId new node ID. Special value #CO_LSS_NODE_ID_ASSIGNMENT can be
  * used to invalidate node ID.
- * @return todo
+ * @return #CO_LSSmaster_ILLEGAL_ARGUMENT,  #CO_LSSmaster_INVALID_STATE,
+ * #CO_LSSmaster_WAIT_SLAVE, #CO_LSSmaster_OK, #CO_LSSmaster_TIMEOUT,
+ * #CO_LSSmaster_OK_MANUFACTURER, #CO_LSSmaster_OK_ILLEGAL_ARGUMENT
  */
 CO_LSSmaster_return_t CO_LSSmaster_configureNodeId(
         CO_LSSmaster_t         *LSSmaster,
@@ -255,7 +258,9 @@ CO_LSSmaster_return_t CO_LSSmaster_configureNodeId(
  * @param LSSmaster This object.
  * @param timeDifference_ms Time difference from previous function call in
  * [milliseconds]. Zero when request is started.
- * @return todo
+ * @return #CO_LSSmaster_ILLEGAL_ARGUMENT,  #CO_LSSmaster_INVALID_STATE,
+ * #CO_LSSmaster_WAIT_SLAVE, #CO_LSSmaster_OK, #CO_LSSmaster_TIMEOUT,
+ * #CO_LSSmaster_OK_MANUFACTURER, #CO_LSSmaster_OK_ILLEGAL_ARGUMENT
  */
 CO_LSSmaster_return_t CO_LSSmaster_configureStore(
         CO_LSSmaster_t         *LSSmaster,
@@ -278,7 +283,8 @@ CO_LSSmaster_return_t CO_LSSmaster_configureStore(
  * @param LSSmaster This object.
  * @param switchDelay_ms delay that is applied by the slave once before and
  * once after switching in [milliseconds].
- * @return todo
+ * @return #CO_LSSmaster_ILLEGAL_ARGUMENT,  #CO_LSSmaster_INVALID_STATE,
+ * #CO_LSSmaster_OK
  */
 CO_LSSmaster_return_t CO_LSSmaster_ActivateBit(
         CO_LSSmaster_t         *LSSmaster,
@@ -300,7 +306,8 @@ CO_LSSmaster_return_t CO_LSSmaster_ActivateBit(
  * @param timeDifference_ms Time difference from previous function call in
  * [milliseconds]. Zero when request is started.
  * @param lssAddress [out] read result when function returns successfully
- * @return todo
+ * @return #CO_LSSmaster_ILLEGAL_ARGUMENT,  #CO_LSSmaster_INVALID_STATE,
+ * #CO_LSSmaster_WAIT_SLAVE, #CO_LSSmaster_OK, #CO_LSSmaster_TIMEOUT
  */
 CO_LSSmaster_return_t CO_LSSmaster_InquireLssAddress(
         CO_LSSmaster_t         *LSSmaster,
@@ -322,7 +329,8 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireLssAddress(
  * @param timeDifference_ms Time difference from previous function call in
  * [milliseconds]. Zero when request is started.
  * @param nodeId [out] read result when function returns successfully
- * @return todo
+ * @return #CO_LSSmaster_ILLEGAL_ARGUMENT,  #CO_LSSmaster_INVALID_STATE,
+ * #CO_LSSmaster_WAIT_SLAVE, #CO_LSSmaster_OK, #CO_LSSmaster_TIMEOUT
  */
 CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
         CO_LSSmaster_t         *LSSmaster,
