@@ -527,10 +527,10 @@ CO_ReturnError_t CO_CANopenInit(
             1000,             /* ms, this timeout should cover every LSS device */
             CO->CANmodule[0],
             CO_RXCAN_LSS_CLI,
-            CO_CAN_ID_LSS_SRV,
+            CO_CAN_ID_LSS_CLI,
             CO->CANmodule[0],
             CO_TXCAN_LSS_SRV,
-            CO_CAN_ID_LSS_CLI);
+            CO_CAN_ID_LSS_SRV);
 #endif
 
     err = CO_SYNC_init(

@@ -61,6 +61,37 @@ extern "C" {
  * @ingroup CO_LSS
  * @{
  *
+ * CANopen Layer Setting Service - client protocol
+ *
+ * The client/master can use the following services
+ * - node selection via LSS address
+ * - node selection via LSS fastscan
+ * - Inquire LSS address of currently selected node
+ * - Inquire node ID
+ * - Configure bit timing
+ * - Configure node ID
+ * - Activate bit timing parameters
+ * - Store configuration
+ *
+ * The LSS master is initalized during the CANopenNode initialization process.
+ * Except for enabling the LSS master in the configurator (@todo), no further
+ * run-time configuration is needed for basic operation.
+ * The LSS master does basic checking of commands and command sequence.
+ *
+ * ###Usage
+ *
+ * Usage of the CANopen LSS master is demonstrated in CANopenSocket application,
+ * see CO_LSS_master.c / CO_LSS_master.h files. @todo currently not upstream.
+ *
+ * It essentially is always as following:
+ * - select slave(s)
+ * - call master command inside loop "while (ret == CO_LSSmaster_WAIT_SLAVE)"
+ * - evaluate return value
+ * - deselect slaves
+ *
+ * A more advanced implementation can make use of the callback function to
+ * shorten waiting times.
+ *
  * @todo some commands can be replied by multiple slaves, with the same content. we need to collect all answers before continuing!
  */
 
@@ -104,8 +135,16 @@ typedef struct{
 /**
  * Initialize LSS object.
  *
- * Function must be called in the communication reset section. todo?
- * 
+ * Function must be called in the communication reset section.
+ *
+ * @param LSSslave This object will be initialized.
+ * @param timeout_ms slave response timeout in ms
+ * @param CANdevRx CAN device for LSS master reception.
+ * @param CANdevRxIdx Index of receive buffer in the above CAN device.
+ * @param CANidLssSlave COB ID for reception.
+ * @param CANdevTx CAN device for LSS master transmission.
+ * @param CANdevTxIdx Index of transmit buffer in the above CAN device.
+ * @param CANidLssMaster COB ID for transmission.
  * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
  */
 CO_ReturnError_t CO_LSSmaster_init(
@@ -113,17 +152,17 @@ CO_ReturnError_t CO_LSSmaster_init(
         uint16_t                timeout_ms,
         CO_CANmodule_t         *CANdevRx,
         uint16_t                CANdevRxIdx,
-        uint32_t                CANidLssMaster,
+        uint32_t                CANidLssSlave,
         CO_CANmodule_t         *CANdevTx,
         uint16_t                CANdevTxIdx,
-        uint32_t                CANidLssSlave);
+        uint32_t                CANidLssMaster);
 
 /**
  * Change LSS master timeout
  *
  * On LSS, a "negative ack" is signaled by the slave not answering. Because of
- * that, a low timeout value can significantly increase initialization speed in
- * some cases (e.g. fastscan). However, as soon as there is activity on the bus,
+ * that, a low timeout value can significantly increase protocol speed in some
+ * cases (e.g. fastscan). However, as soon as there is activity on the bus,
  * LSS messages can be delayed because of their high COB (see #CO_Default_CAN_ID_t).
  *
  * @remark Be aware that a "late response" will seriously mess up LSS, so this
@@ -163,8 +202,8 @@ void CO_LSSmaster_initCallback(
  *
  * This function can select a specific or all slaves.
  *
- * Function must be called cyclically until it returns <=0. Function is
- * non-blocking.
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function is non-blocking.
  *
  * @remark Only one selection can be active at any time.
  *
@@ -202,8 +241,8 @@ CO_LSSmaster_return_t CO_LSSmaster_switchStateDeselect(
  *
  * This function needs one specific node to be selected.
  *
- * Function must be called cyclically until it returns <=0. Function is
- * non-blocking.
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function is non-blocking.
  *
  * @param LSSmaster This object.
  * @param timeDifference_ms Time difference from previous function call in
@@ -226,8 +265,8 @@ CO_LSSmaster_return_t CO_LSSmaster_configureBitTiming(
  *
  * This function needs one specific node to be selected.
  *
- * Function must be called cyclically until it returns <=0. Function is
- * non-blocking.
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function is non-blocking.
  *
  * @param LSSmaster This object.
  * @param timeDifference_ms Time difference from previous function call in
@@ -248,12 +287,12 @@ CO_LSSmaster_return_t CO_LSSmaster_configureNodeId(
  * Request LSS store configuration
  *
  * The current "pending" values for bit rate and node ID in LSS slave are
- * stored to NVM.
+ * stored as "permanent" values.
  *
  * This function needs one specific node to be selected.
  *
- * Function must be called cyclically until it returns <=0. Function is
- * non-blocking.
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function is non-blocking.
  *
  * @param LSSmaster This object.
  * @param timeDifference_ms Time difference from previous function call in
@@ -282,7 +321,7 @@ CO_LSSmaster_return_t CO_LSSmaster_configureStore(
  *
  * @param LSSmaster This object.
  * @param switchDelay_ms delay that is applied by the slave once before and
- * once after switching in [milliseconds].
+ * once after switching in ms.
  * @return #CO_LSSmaster_ILLEGAL_ARGUMENT,  #CO_LSSmaster_INVALID_STATE,
  * #CO_LSSmaster_OK
  */
@@ -299,8 +338,8 @@ CO_LSSmaster_return_t CO_LSSmaster_ActivateBit(
  *
  * This function needs one specific node to be selected.
  *
- * Function must be called cyclically until it returns <=0. Function is
- * non-blocking.
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function is non-blocking.
  *
  * @param LSSmaster This object.
  * @param timeDifference_ms Time difference from previous function call in
@@ -322,8 +361,8 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireLssAddress(
  *
  * This function needs one specific node to be selected.
  *
- * Function must be called cyclically until it returns <=0. Function is
- * non-blocking.
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function is non-blocking.
  *
  * @param LSSmaster This object.
  * @param timeDifference_ms Time difference from previous function call in
@@ -347,10 +386,10 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
  * - no slave is selected because no slave matched the given criteria
  * - no slave is selected because all slaves are configured
  *
- * This function needs no node to be selected. //todo geht das "all configured" per "is selected??
+ * This function needs no node to be selected. //todo how to detect configured nodes??
  *
- * Function must be called cyclically until it returns <=0. Function is
- * non-blocking.
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function is non-blocking.
  *
  * @param LSSmaster This object.
  * @param timeDifference_ms Time difference from previous function call in

@@ -151,10 +151,10 @@ CO_ReturnError_t CO_LSSmaster_init(
         uint16_t                timeout_ms,
         CO_CANmodule_t         *CANdevRx,
         uint16_t                CANdevRxIdx,
-        uint32_t                CANidLssMaster,
+        uint32_t                CANidLssSlave,
         CO_CANmodule_t         *CANdevTx,
         uint16_t                CANdevTxIdx,
-        uint32_t                CANidLssSlave)
+        uint32_t                CANidLssMaster)
 {
     /* verify arguments */
     if (LSSmaster==NULL || CANdevRx==NULL || CANdevTx==NULL){
