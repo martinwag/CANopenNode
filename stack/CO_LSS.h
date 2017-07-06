@@ -152,7 +152,7 @@ typedef enum {
 } CO_LSS_cfgStore_t;
 
 /**
- * Fastscan BitCheck. BIT0 means all bits are checked.
+ * Fastscan BitCheck. BIT0 means all bits are checked for equality by slave.
  */
 typedef enum {
     CO_LSS_FASTSCAN_BIT0    = 0x00U, /**< Least significant bit of IDnumbners bit area to be checked */

@@ -99,13 +99,14 @@ extern "C" {
  * Return values of LSS master functions.
  */
 typedef enum {
-    CO_LSSmaster_FASTSCAN_FINISHED   = 2,    /**< No more unconfigured slaves found */
+    CO_LSSmaster_SCAN_FINISHED       = 2,    /**< Scanning finished successful */
     CO_LSSmaster_WAIT_SLAVE          = 1,    /**< No response arrived from server yet */
     CO_LSSmaster_OK                  = 0,    /**< Success, end of communication */
     CO_LSSmaster_TIMEOUT             = -1,   /**< No reply received */
     CO_LSSmaster_ILLEGAL_ARGUMENT    = -2,   /**< Invalid argument */
-    CO_LSSmaster_FASTSCAN_NO_ACK     = -3,   /**< No slaves found with given arguments */
-    CO_LSSmaster_INVALID_STATE       = -4,   /**< State machine not ready or already processing a request */
+    CO_LSSmaster_INVALID_STATE       = -3,   /**< State machine not ready or already processing a request */
+    CO_LSSmaster_SCAN_NOACK          = -4,   /**< No node found that matches scan request */
+    CO_LSSmaster_SCAN_FAILED         = -5,   /**< An error occurred while scanning. Try again */
     CO_LSSmaster_OK_ILLEGAL_ARGUMENT = -101, /**< LSS success, slave rejected argument because of non-supported value */
     CO_LSSmaster_OK_MANUFACTURER     = -102, /**< LSS success, slave rejected argument with manufacturer error code */
 } CO_LSSmaster_return_t;
@@ -120,6 +121,11 @@ typedef struct{
     uint8_t          state;            /**< Slave is currently selected */
     uint8_t          command;          /**< Active command */
     uint16_t         timeoutTimer;     /**< Timeout timer for LSS communication */
+
+    uint8_t          fsState;          /**< Current state of fastscan */
+    uint8_t          fsLssSub;         /**< Current state of node state machine */
+    uint8_t          fsBitChecked;     /**< Current scan bit position */
+    uint32_t         fsIdNumber;       /**< Current scan result */
 
     volatile bool_t  CANrxNew;         /**< Flag indicates, if new LSS message is received from CAN bus. It needs to be cleared when received message is completely processed. */
     uint8_t          CANrxData[8];     /**< 8 data bytes of the received message */
@@ -376,17 +382,25 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
         uint16_t                timeDifference_ms,
         uint8_t                *nodeId);
 
+/**
+ * Parameters for LSS fastscan #CO_LSSmaster_IdentifyFastscan
+ */
+typedef struct{
+    CO_LSS_address_t  check;
+    bool_t            scan[4];
+    CO_LSS_address_t  found;
+}CO_LSSmaster_fastscan_request_t;
 
 /**
- * Request LSS identify fastscan
+ * Select a node by LSS identify fastscan
  *
  * This initiates searching for a node by the means of LSS fastscan mechanism.
  * When this function is finished
- * - a (more or less) arbitrary slave is selected
- * - no slave is selected because no slave matched the given criteria
- * - no slave is selected because all slaves are configured
+ * - a (more or less) arbitrary node is selected
+ * - no node is selected because the given criteria do not match a node
+ * - no node is selected because all nodes are already configured
  *
- * This function needs no node to be selected. //todo how to detect configured nodes??
+ * This function needs that no node is selected when starting the scan process.
  *
  * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
  * Function is non-blocking.
@@ -394,7 +408,7 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
  * @param LSSmaster This object.
  * @param timeDifference_ms Time difference from previous function call in
  * [milliseconds]. Zero when request is started.
- * @param lssAddressScanStart This is the LSS address at which the scan will
+ * @param todo lssAddressScanStart This is the LSS address at which the scan will
  * begin. It is usually the value that the last scan returned or "0" on first
  * scan.
  * @param lssAddressScanMatch This can be used to partly override scanning. If
@@ -405,12 +419,41 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
  * @return todo
  */
 CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
+        CO_LSSmaster_t                  *LSSmaster,
+        uint16_t                         timeDifference_ms,
+        CO_LSSmaster_fastscan_request_t *fastscan);
+
+/**
+ * Request node enumeration by LSS identify fastscan
+ *
+ * This initiates node enumeration by the means of LSS fastscan mechanism.
+ * When this function is finished
+ * - a list with found nodes is generated
+ * - no list is generated because the given criteria do not match any node
+ * - no list is generated because all nodes are already configured
+ *
+ * This function needs that no node is selected when starting the scan process.
+ *
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function is non-blocking.
+ *
+ * @param LSSmaster This object.
+ * @param timeDifference_ms Time difference from previous function call in
+ * [milliseconds]. Zero when request is started.
+ * This can be useful to e.g. scan for devices of a specific manufacturer.
+ * @param nodeId [in] array with IDs to assign to nodes, 0 = n + 1, [out] assigned
+ * node id
+ * @param lssAddressFound [in] array with LSS addresses of already known nodes.
+ * Those nodes are assingned the node ID in #nodeID, if given. //todo scan for parts
+ * @param count array length //todo how to signal that there are more nodes found than elements?
+ * @return //todo
+ */
+CO_LSSmaster_return_t CO_LSSmaster_enumerateFastscan(
         CO_LSSmaster_t         *LSSmaster,
         uint16_t                timeDifference_ms,
-        CO_LSS_address_t       *lssAddressScanStart,
-        CO_LSS_address_t       *lssAddressScanMatch,
-        CO_LSS_address_t       *lssAddressFound);
-
+        uint8_t                *nodeId,
+        CO_LSS_address_t       *lssAddress,
+        uint8_t                 count);
 
 
 #else /* CO_NO_LSS_CLIENT == 1 */
