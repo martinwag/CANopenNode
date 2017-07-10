@@ -92,7 +92,6 @@ extern "C" {
  * A more advanced implementation can make use of the callback function to
  * shorten waiting times.
  *
- * @todo some commands can be replied by multiple slaves, with the same content. we need to collect all answers before continuing!
  */
 
 /**
@@ -122,7 +121,7 @@ typedef struct{
     uint8_t          command;          /**< Active command */
     uint16_t         timeoutTimer;     /**< Timeout timer for LSS communication */
 
-    uint8_t          fsState;          /**< Current state of fastscan */
+    uint8_t          fsState;          /**< Current state of fastscan master state machine */
     uint8_t          fsLssSub;         /**< Current state of node state machine */
     uint8_t          fsBitChecked;     /**< Current scan bit position */
     uint32_t         fsIdNumber;       /**< Current scan result */
@@ -139,12 +138,20 @@ typedef struct{
 
 
 /**
+ * Default timeout for LSS slave in ms. This is the same as for SDO. For more
+ * info about LSS timeout see #CO_LSSmaster_changeTimeout()
+ */
+#define CO_LSSmaster_DEFAULT_TIMEOUT 1000U /* ms */
+
+
+/**
  * Initialize LSS object.
  *
  * Function must be called in the communication reset section.
  *
  * @param LSSslave This object will be initialized.
- * @param timeout_ms slave response timeout in ms
+ * @param timeout_ms slave response timeout in ms, for more detail see
+ * #CO_LSSmaster_changeTimeout()
  * @param CANdevRx CAN device for LSS master reception.
  * @param CANdevRxIdx Index of receive buffer in the above CAN device.
  * @param CANidLssSlave COB ID for reception.
@@ -169,7 +176,8 @@ CO_ReturnError_t CO_LSSmaster_init(
  * On LSS, a "negative ack" is signaled by the slave not answering. Because of
  * that, a low timeout value can significantly increase protocol speed in some
  * cases (e.g. fastscan). However, as soon as there is activity on the bus,
- * LSS messages can be delayed because of their high COB (see #CO_Default_CAN_ID_t).
+ * LSS messages can be delayed because of their low CAN network priority (see
+ * #CO_Default_CAN_ID_t).
  *
  * @remark Be aware that a "late response" will seriously mess up LSS, so this
  * value must be selected "as high as necessary and as low as possible". CiA does
@@ -247,7 +255,7 @@ CO_LSSmaster_return_t CO_LSSmaster_switchStateDeselect(
  *
  * This function needs one specific node to be selected.
  *
- * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE.
  * Function is non-blocking.
  *
  * @param LSSmaster This object.
@@ -271,7 +279,7 @@ CO_LSSmaster_return_t CO_LSSmaster_configureBitTiming(
  *
  * This function needs one specific node to be selected.
  *
- * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE.
  * Function is non-blocking.
  *
  * @param LSSmaster This object.
@@ -297,7 +305,7 @@ CO_LSSmaster_return_t CO_LSSmaster_configureNodeId(
  *
  * This function needs one specific node to be selected.
  *
- * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE.
  * Function is non-blocking.
  *
  * @param LSSmaster This object.
@@ -344,7 +352,7 @@ CO_LSSmaster_return_t CO_LSSmaster_ActivateBit(
  *
  * This function needs one specific node to be selected.
  *
- * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE.
  * Function is non-blocking.
  *
  * @param LSSmaster This object.
@@ -367,7 +375,7 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireLssAddress(
  *
  * This function needs one specific node to be selected.
  *
- * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE.
  * Function is non-blocking.
  *
  * @param LSSmaster This object.
@@ -382,78 +390,78 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
         uint16_t                timeDifference_ms,
         uint8_t                *nodeId);
 
+
 /**
  * Parameters for LSS fastscan #CO_LSSmaster_IdentifyFastscan
  */
 typedef struct{
-    CO_LSS_address_t  check;
-    bool_t            scan[4];
-    CO_LSS_address_t  found;
-}CO_LSSmaster_fastscan_request_t;
+    uint8_t             scan[4];  /**< #CO_LSSmaster_fastscan_scantype_t */
+    CO_LSS_address_t    match;    /**< Value to match in case of #CO_LSSmaster_FS_MATCH */
+    CO_LSS_address_t    found;    /**< Scan result */
+} CO_LSSmaster_fastscan_t;
+
+/**
+ * Scan type for #CO_LSSmaster_fastscan_t scan
+ */
+typedef enum {
+    CO_LSSmaster_FS_SCAN  = 0,    /**< Do full 32 bit scan */
+    CO_LSSmaster_FS_SKIP  = 1,    /**< Skip this value */
+    CO_LSSmaster_FS_MATCH = 2,    /**< Full 32 bit value is given as argument, just verify */
+} CO_LSSmaster_fastscan_scantype_t;
 
 /**
  * Select a node by LSS identify fastscan
  *
- * This initiates searching for a node by the means of LSS fastscan mechanism.
- * When this function is finished
- * - a (more or less) arbitrary node is selected
+ * This initiates searching for a unconfigured node by the means of LSS fastscan
+ * mechanism. When this function is finished
+ * - a (more or less) arbitrary node is selected and ready for node ID assingment
  * - no node is selected because the given criteria do not match a node
  * - no node is selected because all nodes are already configured
  *
+ * There are multiple ways to scan for a slave. Depending on those, the scan
+ * will take different amounts of time:
+ * - full scan
+ * - partial scan
+ * - verification
+ *
+ * Most of the time, those are used in combination. Consider the following example:
+ * - Vendor ID and product code are known
+ * - Software version doesn't matter
+ * - Serial number is unknown
+ *
+ * In this case, the fastscan structure should be set up as following:
+ * \code{.c}
+CO_LSSmaster_fastscan_t fastscan;
+fastscan.scan[CO_LSS_FASTSCAN_VENDOR_ID] = CO_LSSmaster_FS_MATCH;
+fastscan.match.vendorID = YOUR_VENDOR_ID;
+fastscan.scan[CO_LSS_FASTSCAN_PRODUCT] = CO_LSSmaster_FS_MATCH;
+fastscan.match.productCode = YOUR_PRODUCT_CODE;
+fastscan.scan[CO_LSS_FASTSCAN_REV] = CO_LSSmaster_FS_SKIP;
+fastscan.scan[CO_LSS_FASTSCAN_SERIAL] = CO_LSSmaster_FS_SCAN;
+ * \endcode
+ *
+ * This example will take 2 scan cyles for verifying vendor ID and product code
+ * and 33 scan cycles to find the serial number.
+ *
+ * For scanning, the following limitations apply:
+ * - No more than two values can be skipped
+ * - Vendor ID cannot be skipped
+ *
  * This function needs that no node is selected when starting the scan process.
  *
- * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
+ * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE.
  * Function is non-blocking.
  *
  * @param LSSmaster This object.
  * @param timeDifference_ms Time difference from previous function call in
  * [milliseconds]. Zero when request is started.
- * @param todo lssAddressScanStart This is the LSS address at which the scan will
- * begin. It is usually the value that the last scan returned or "0" on first
- * scan.
- * @param lssAddressScanMatch This can be used to partly override scanning. If
- * a value != 0 is set on a element this value will be used without scanning.
- * This can be useful to e.g. scan for devices of a specific manufacturer.
- * @param lssAddressFound This contains the LSS address of the selected slave
- * when fastscan successfully selected a node.
+ * @param fastscan struct according to #CO_LSSmaster_fastscan_t.
  * @return todo
  */
 CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
         CO_LSSmaster_t                  *LSSmaster,
         uint16_t                         timeDifference_ms,
-        CO_LSSmaster_fastscan_request_t *fastscan);
-
-/**
- * Request node enumeration by LSS identify fastscan
- *
- * This initiates node enumeration by the means of LSS fastscan mechanism.
- * When this function is finished
- * - a list with found nodes is generated
- * - no list is generated because the given criteria do not match any node
- * - no list is generated because all nodes are already configured
- *
- * This function needs that no node is selected when starting the scan process.
- *
- * Function must be called cyclically until it returns != #CO_LSSmaster_WAIT_SLAVE
- * Function is non-blocking.
- *
- * @param LSSmaster This object.
- * @param timeDifference_ms Time difference from previous function call in
- * [milliseconds]. Zero when request is started.
- * This can be useful to e.g. scan for devices of a specific manufacturer.
- * @param nodeId [in] array with IDs to assign to nodes, 0 = n + 1, [out] assigned
- * node id
- * @param lssAddressFound [in] array with LSS addresses of already known nodes.
- * Those nodes are assingned the node ID in #nodeID, if given. //todo scan for parts
- * @param count array length //todo how to signal that there are more nodes found than elements?
- * @return //todo
- */
-CO_LSSmaster_return_t CO_LSSmaster_enumerateFastscan(
-        CO_LSSmaster_t         *LSSmaster,
-        uint16_t                timeDifference_ms,
-        uint8_t                *nodeId,
-        CO_LSS_address_t       *lssAddress,
-        uint8_t                 count);
+        CO_LSSmaster_fastscan_t         *fastscan);
 
 
 #else /* CO_NO_LSS_CLIENT == 1 */

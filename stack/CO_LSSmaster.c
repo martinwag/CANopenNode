@@ -780,6 +780,8 @@ static void CO_LSSmaster_FsSendMsg(
         uint8_t                 lssSub,
         uint8_t                 lssNext)
 {
+    LSSmaster->timeoutTimer = 0;
+
     CLEAR_CANrxNew();
     LSSmaster->TXbuff->data[0] = CO_LSS_IDENT_FASTSCAN;
     CO_setUint32(&LSSmaster->TXbuff->data[1], idNumber);
@@ -823,16 +825,20 @@ static CO_LSSmaster_return_t CO_LSSmaster_FsCheckWait(
 static CO_LSSmaster_return_t CO_LSSmaster_FsIdentifyInitiate(
         CO_LSSmaster_t                  *LSSmaster,
         uint16_t                         timeDifference_ms,
-        CO_LSSmaster_fastscan_request_t *fastscan,
+        CO_LSSmaster_fastscan_scantype_t scan,
         CO_LSS_fastscan_lss_sub_next     lssSub)
 {
-    LSSmaster->timeoutTimer = 0;
-
     LSSmaster->fsLssSub = lssSub;
-    LSSmaster->fsBitChecked = CO_LSS_FASTSCAN_BIT31;
     LSSmaster->fsIdNumber = 0;
 
-    /* send first request */
+    if (scan != CO_LSSmaster_FS_SCAN) {
+        /* No scanning requested */
+        return CO_LSSmaster_SCAN_FINISHED;
+    }
+
+    LSSmaster->fsBitChecked = CO_LSS_FASTSCAN_BIT31;
+
+    /* trigger scan procedure by sending first message */
     CO_LSSmaster_FsSendMsg(LSSmaster, LSSmaster->fsIdNumber,
         LSSmaster->fsBitChecked, LSSmaster->fsLssSub, LSSmaster->fsLssSub);
 
@@ -845,9 +851,14 @@ static CO_LSSmaster_return_t CO_LSSmaster_FsIdentifyInitiate(
 static CO_LSSmaster_return_t CO_LSSmaster_FsIdentifyWait(
         CO_LSSmaster_t                  *LSSmaster,
         uint16_t                         timeDifference_ms,
-        CO_LSSmaster_fastscan_request_t *fastscan)
+        CO_LSSmaster_fastscan_scantype_t scan)
 {
     CO_LSSmaster_return_t ret;
+
+    if (scan != CO_LSSmaster_FS_SCAN) {
+        /* No scanning requested */
+        return CO_LSSmaster_SCAN_FINISHED;
+    }
 
     ret = CO_LSSmaster_check_timeout(LSSmaster, timeDifference_ms);
     if (ret == CO_LSSmaster_TIMEOUT) {
@@ -890,10 +901,22 @@ static CO_LSSmaster_return_t CO_LSSmaster_FsIdentifyWait(
 static CO_LSSmaster_return_t CO_LSSmaster_FsVerifyInitiate(
         CO_LSSmaster_t                  *LSSmaster,
         uint16_t                         timeDifference_ms,
-        CO_LSSmaster_fastscan_request_t *fastscan,
+        CO_LSSmaster_fastscan_scantype_t scan,
+        uint32_t                         idNumberCheck,
         CO_LSS_fastscan_lss_sub_next     lssNext)
 {
-    LSSmaster->timeoutTimer = 0;
+    switch (scan) {
+        case CO_LSSmaster_FS_SCAN:
+            /* ID obtained by scan */
+            break;
+        case CO_LSSmaster_FS_MATCH:
+            /* ID given by user */
+            LSSmaster->fsIdNumber = idNumberCheck;
+            break;
+        case CO_LSSmaster_FS_SKIP:
+            /* ID not checked */
+            return CO_LSSmaster_SCAN_FINISHED;
+    }
 
     LSSmaster->fsBitChecked = CO_LSS_FASTSCAN_BIT0;
 
@@ -906,18 +929,26 @@ static CO_LSSmaster_return_t CO_LSSmaster_FsVerifyInitiate(
 
 /*
  * Helper function - verify 32 bit LSS address, request node(s) to switch
- * to next 32 bit of LSS address
+ * their state machine to the next state
  */
 static CO_LSSmaster_return_t CO_LSSmaster_FsVerifyWait(
         CO_LSSmaster_t                  *LSSmaster,
         uint16_t                         timeDifference_ms,
-        CO_LSSmaster_fastscan_request_t *fastscan)
+        CO_LSSmaster_fastscan_scantype_t scan,
+        uint32_t                        *idNumberRet)
 {
     CO_LSSmaster_return_t ret;
+
+    if (scan == CO_LSSmaster_FS_SKIP) {
+        /* nothing to verify */
+        *idNumberRet = 0;
+        return CO_LSSmaster_SCAN_FINISHED;
+    }
 
     ret = CO_LSSmaster_check_timeout(LSSmaster, timeDifference_ms);
     if (ret == CO_LSSmaster_TIMEOUT) {
 
+        *idNumberRet = 0;
         ret = CO_LSSmaster_SCAN_NOACK;
 
         if (IS_CANrxNew()) {
@@ -925,6 +956,7 @@ static CO_LSSmaster_return_t CO_LSSmaster_FsVerifyWait(
             CLEAR_CANrxNew();
 
             if (cs == CO_LSS_IDENT_SLAVE) {
+                *idNumberRet = LSSmaster->fsIdNumber;
                 ret = CO_LSSmaster_SCAN_FINISHED;
             } else {
                 ret = CO_LSSmaster_SCAN_FAILED;
@@ -935,22 +967,51 @@ static CO_LSSmaster_return_t CO_LSSmaster_FsVerifyWait(
     return ret;
 }
 
+static CO_LSS_fastscan_lss_sub_next CO_LSSmaster_FsFindNext(
+        CO_LSSmaster_t                  *LSSmaster,
+        CO_LSSmaster_fastscan_t         *fastscan)
+{
+    int i;
+
+    for (i = LSSmaster->fsLssSub + 1; i <= CO_LSS_FASTSCAN_SERIAL; i++) {
+        if (fastscan->scan[i] != CO_LSSmaster_FS_SKIP) {
+            return (CO_LSS_fastscan_lss_sub_next)i;
+        }
+    }
+    return CO_LSS_FASTSCAN_VENDOR_ID;
+}
 
 /******************************************************************************/
 CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
-        CO_LSSmaster_t                  *LSSmaster,
-        uint16_t                         timeDifference_ms,
-        CO_LSSmaster_fastscan_request_t *fastscan)
+        CO_LSSmaster_t          *LSSmaster,
+        uint16_t                 timeDifference_ms,
+        CO_LSSmaster_fastscan_t *fastscan)
 {
+    uint8_t i;
+    uint8_t count;
     CO_LSSmaster_return_t ret;
+    CO_LSS_fastscan_lss_sub_next next;
 
+    /* parameter validation */
     if (LSSmaster==NULL || fastscan==NULL){
         return CO_LSSmaster_ILLEGAL_ARGUMENT;
     }
-    if (fastscan->scan[0] != true) {
+    if (fastscan->scan[0] == CO_LSSmaster_FS_SKIP) {
         /* vendor ID scan cannot be skipped */
         return CO_LSSmaster_ILLEGAL_ARGUMENT;
     }
+    count = 0;
+    for (i = 0; i < (sizeof(fastscan->scan) / sizeof(fastscan->scan[0])); i++) {
+        if (fastscan->scan[i] == CO_LSSmaster_FS_SKIP) {
+            count ++;
+        }
+        if (count > 2) {
+            /* Node selection needs the Vendor ID and any other value */
+            return CO_LSSmaster_ILLEGAL_ARGUMENT;
+        }
+    }
+
+    /* state machine validation */
     if (LSSmaster->state!=CO_LSSmaster_STATE_WAITING ||
         (LSSmaster->command!=CO_LSSmaster_COMMAND_WAITING &&
          LSSmaster->command!=CO_LSSmaster_COMMAND_IDENTIFY_FASTSCAN)) {
@@ -958,11 +1019,11 @@ CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
         return CO_LSSmaster_INVALID_STATE;
     }
 
+    /* evaluate LSS state machine */
     switch (LSSmaster->command) {
         case CO_LSSmaster_COMMAND_WAITING:
             /* start fastscan */
             LSSmaster->command = CO_LSSmaster_COMMAND_IDENTIFY_FASTSCAN;
-            LSSmaster->timeoutTimer = 0;
 
             /* check if any nodes are waiting, if yes they are reset */
             LSSmaster->fsState = CO_LSSmaster_FS_CHECK;
@@ -974,98 +1035,139 @@ CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
             break;
     }
 
+    /* evaluate fastscan state machine */
     switch (LSSmaster->fsState) {
         case CO_LSSmaster_FS_CHECK:
             ret = CO_LSSmaster_FsCheckWait(LSSmaster, timeDifference_ms);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
                 /* initiate scan for vendor ID */
                 ret = CO_LSSmaster_FsIdentifyInitiate(LSSmaster, timeDifference_ms,
-                          fastscan, CO_LSS_FASTSCAN_VENDOR_ID);
+                          fastscan->scan[CO_LSS_FASTSCAN_VENDOR_ID],
+                          CO_LSS_FASTSCAN_VENDOR_ID);
 
                 LSSmaster->fsState = CO_LSSmaster_FS_IDENTIFY_VENDOR;
             }
-            break;
+            if (ret != CO_LSSmaster_SCAN_FINISHED) {
+                break;
+            }
+            /* Fall trough */
         case CO_LSSmaster_FS_IDENTIFY_VENDOR:
             ret = CO_LSSmaster_FsIdentifyWait(LSSmaster, timeDifference_ms,
-                      fastscan);
+                      fastscan->scan[CO_LSS_FASTSCAN_VENDOR_ID]);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
                 /* initiate verifcation, trigger node switch */
+                next = CO_LSSmaster_FsFindNext(LSSmaster, fastscan);
                 ret = CO_LSSmaster_FsVerifyInitiate(LSSmaster, timeDifference_ms,
-                          fastscan, CO_LSS_FASTSCAN_PRODUCT);
+                          fastscan->scan[CO_LSS_FASTSCAN_VENDOR_ID],
+                          fastscan->match.vendorID, next);
 
                 LSSmaster->fsState = CO_LSSmaster_FS_VERIFY_VENDOR;
             }
-            break;
+            if (ret != CO_LSSmaster_SCAN_FINISHED) {
+                break;
+            }
+            /* Fall trough */
         case CO_LSSmaster_FS_VERIFY_VENDOR:
             ret = CO_LSSmaster_FsVerifyWait(LSSmaster, timeDifference_ms,
-                      fastscan);
+                      fastscan->scan[CO_LSS_FASTSCAN_VENDOR_ID],
+                      &fastscan->found.vendorID);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
                 /* initiate scan for product code */
                 ret = CO_LSSmaster_FsIdentifyInitiate(LSSmaster, timeDifference_ms,
-                          fastscan, CO_LSS_FASTSCAN_PRODUCT);
+                          fastscan->scan[CO_LSS_FASTSCAN_PRODUCT],
+                          CO_LSS_FASTSCAN_PRODUCT);
 
                 LSSmaster->fsState = CO_LSSmaster_FS_IDENTIFY_PRODUCT;
             }
-            break;
+            if (ret != CO_LSSmaster_SCAN_FINISHED) {
+                break;
+            }
+            /* Fall trough */
         case CO_LSSmaster_FS_IDENTIFY_PRODUCT:
             ret = CO_LSSmaster_FsIdentifyWait(LSSmaster, timeDifference_ms,
-                      fastscan);
+                      fastscan->scan[CO_LSS_FASTSCAN_PRODUCT]);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
                 /* initiate verifcation, trigger node switch */
-                ret = CO_LSSmaster_FsVerifyInitiate(LSSmaster, timeDifference_ms,
-                          fastscan, CO_LSS_FASTSCAN_REV);
+              next = CO_LSSmaster_FsFindNext(LSSmaster, fastscan);
+              ret = CO_LSSmaster_FsVerifyInitiate(LSSmaster, timeDifference_ms,
+                        fastscan->scan[CO_LSS_FASTSCAN_PRODUCT],
+                        fastscan->match.productCode, next);
 
                 LSSmaster->fsState = CO_LSSmaster_FS_VERIFY_PRODUCT;
             }
-            break;
+            if (ret != CO_LSSmaster_SCAN_FINISHED) {
+                break;
+            }
+            /* Fall trough */
         case CO_LSSmaster_FS_VERIFY_PRODUCT:
             ret = CO_LSSmaster_FsVerifyWait(LSSmaster, timeDifference_ms,
-                      fastscan);
+                      fastscan->scan[CO_LSS_FASTSCAN_PRODUCT],
+                      &fastscan->found.productCode);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
                 /* initiate scan for software revision */
                 ret = CO_LSSmaster_FsIdentifyInitiate(LSSmaster, timeDifference_ms,
-                          fastscan, CO_LSS_FASTSCAN_REV);
+                          fastscan->scan[CO_LSS_FASTSCAN_REV],
+                          CO_LSS_FASTSCAN_REV);
 
                 LSSmaster->fsState = CO_LSSmaster_FS_IDENTIFY_REV;
             }
-            break;
+            if (ret != CO_LSSmaster_SCAN_FINISHED) {
+                break;
+            }
+            /* Fall trough */
         case CO_LSSmaster_FS_IDENTIFY_REV:
             ret = CO_LSSmaster_FsIdentifyWait(LSSmaster, timeDifference_ms,
-                      fastscan);
+                      fastscan->scan[CO_LSS_FASTSCAN_REV]);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
                 /* initiate verifcation, trigger node switch */
+                next = CO_LSSmaster_FsFindNext(LSSmaster, fastscan);
                 ret = CO_LSSmaster_FsVerifyInitiate(LSSmaster, timeDifference_ms,
-                          fastscan, CO_LSS_FASTSCAN_SERIAL);
+                          fastscan->scan[CO_LSS_FASTSCAN_REV],
+                          fastscan->match.revisionNumber, next);
 
                 LSSmaster->fsState = CO_LSSmaster_FS_VERIFY_REV;
             }
-            break;
+            if (ret != CO_LSSmaster_SCAN_FINISHED) {
+                break;
+            }
+            /* Fall trough */
         case CO_LSSmaster_FS_VERIFY_REV:
             ret = CO_LSSmaster_FsVerifyWait(LSSmaster, timeDifference_ms,
-                      fastscan);
+                      fastscan->scan[CO_LSS_FASTSCAN_REV],
+                      &fastscan->found.revisionNumber);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
                 /* initiate scan for serial number */
                 ret = CO_LSSmaster_FsIdentifyInitiate(LSSmaster, timeDifference_ms,
-                          fastscan, CO_LSS_FASTSCAN_SERIAL);
+                          fastscan->scan[CO_LSS_FASTSCAN_SERIAL],
+                          CO_LSS_FASTSCAN_SERIAL);
 
                 LSSmaster->fsState = CO_LSSmaster_FS_IDENTIFY_SERIAL;
             }
-            break;
+            if (ret != CO_LSSmaster_SCAN_FINISHED) {
+                break;
+            }
+            /* Fall trough */
         case CO_LSSmaster_FS_IDENTIFY_SERIAL:
-            ret = CO_LSSmaster_FsIdentifyWait(LSSmaster,
-                      timeDifference_ms, fastscan);
+            ret = CO_LSSmaster_FsIdentifyWait(LSSmaster, timeDifference_ms,
+                      fastscan->scan[CO_LSS_FASTSCAN_SERIAL]);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
                 /* initiate verifcation, trigger node selection (by using
                  * lower switch value) */
                 ret = CO_LSSmaster_FsVerifyInitiate(LSSmaster, timeDifference_ms,
-                          fastscan, CO_LSS_FASTSCAN_VENDOR_ID);
+                          fastscan->scan[CO_LSS_FASTSCAN_SERIAL],
+                          fastscan->match.serialNumber,
+                          CO_LSS_FASTSCAN_VENDOR_ID);
 
                 LSSmaster->fsState = CO_LSSmaster_FS_VERIFY_SERIAL;
             }
-            break;
+            if (ret != CO_LSSmaster_SCAN_FINISHED) {
+                break;
+            }
+            /* Fall trough */
         case CO_LSSmaster_FS_VERIFY_SERIAL:
             ret = CO_LSSmaster_FsVerifyWait(LSSmaster, timeDifference_ms,
-                      fastscan);
+                      fastscan->scan[CO_LSS_FASTSCAN_SERIAL],
+                      &fastscan->found.serialNumber);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
                 /* Device is now selected */
                 LSSmaster->state = CO_LSSmaster_STATE_CFG_SLECTIVE;
