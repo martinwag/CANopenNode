@@ -392,22 +392,22 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
 
 
 /**
- * Parameters for LSS fastscan #CO_LSSmaster_IdentifyFastscan
- */
-typedef struct{
-    uint8_t             scan[4];  /**< #CO_LSSmaster_fastscan_scantype_t */
-    CO_LSS_address_t    match;    /**< Value to match in case of #CO_LSSmaster_FS_MATCH */
-    CO_LSS_address_t    found;    /**< Scan result */
-} CO_LSSmaster_fastscan_t;
-
-/**
  * Scan type for #CO_LSSmaster_fastscan_t scan
  */
 typedef enum {
     CO_LSSmaster_FS_SCAN  = 0,    /**< Do full 32 bit scan */
     CO_LSSmaster_FS_SKIP  = 1,    /**< Skip this value */
     CO_LSSmaster_FS_MATCH = 2,    /**< Full 32 bit value is given as argument, just verify */
-} CO_LSSmaster_fastscan_scantype_t;
+} CO_LSSmaster_scantype_t;
+
+/**
+ * Parameters for LSS fastscan #CO_LSSmaster_IdentifyFastscan
+ */
+typedef struct{
+    CO_LSSmaster_scantype_t scan[4];  /**< Scan type for each part of the LSS address */
+    CO_LSS_address_t        match;    /**< Value to match in case of #CO_LSSmaster_FS_MATCH */
+    CO_LSS_address_t        found;    /**< Scan result */
+} CO_LSSmaster_fastscan_t;
 
 /**
  * Select a node by LSS identify fastscan
@@ -446,6 +446,9 @@ fastscan.scan[CO_LSS_FASTSCAN_SERIAL] = CO_LSSmaster_FS_SCAN;
  * For scanning, the following limitations apply:
  * - No more than two values can be skipped
  * - Vendor ID cannot be skipped
+ *
+ * @remark When doing partial scans, it is in the responsibility of the user
+ * that the LSS address is unique.
  *
  * This function needs that no node is selected when starting the scan process.
  *
