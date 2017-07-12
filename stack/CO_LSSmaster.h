@@ -459,7 +459,9 @@ fastscan.scan[CO_LSS_FASTSCAN_SERIAL] = CO_LSSmaster_FS_SCAN;
  * @param timeDifference_ms Time difference from previous function call in
  * [milliseconds]. Zero when request is started.
  * @param fastscan struct according to #CO_LSSmaster_fastscan_t.
- * @return todo
+ * @return #CO_LSSmaster_ILLEGAL_ARGUMENT,  #CO_LSSmaster_INVALID_STATE,
+ * #CO_LSSmaster_WAIT_SLAVE, #CO_LSSmaster_SCAN_FINISHED, #CO_LSSmaster_SCAN_NOACK,
+ * #CO_LSSmaster_SCAN_FAILED
  */
 CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
         CO_LSSmaster_t                  *LSSmaster,

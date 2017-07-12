@@ -80,9 +80,9 @@ typedef enum {
  * LSS master fastscan state machine
  */
 typedef enum {
-  CO_LSSmaster_FS_CHECK,
-  CO_LSSmaster_FS_SCAN,
-  CO_LSSmaster_FS_VERIFY
+  CO_LSSmaster_FS_STATE_CHECK,
+  CO_LSSmaster_FS_STATE_SCAN,
+  CO_LSSmaster_FS_STATE_VERIFY
 } CO_LSSmaster_fs_t;
 
 /*
@@ -1034,8 +1034,8 @@ CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
             /* start fastscan */
             LSSmaster->command = CO_LSSmaster_COMMAND_IDENTIFY_FASTSCAN;
 
-            /* check if any nodes are waiting, if yes they are reset */
-            LSSmaster->fsState = CO_LSSmaster_FS_CHECK;
+            /* check if any nodes are waiting, if yes fastscan is reset */
+            LSSmaster->fsState = CO_LSSmaster_FS_STATE_CHECK;
             CO_LSSmaster_FsSendMsg(LSSmaster, 0, CO_LSS_FASTSCAN_CONFIRM, 0, 0);
 
             return CO_LSSmaster_WAIT_SLAVE;
@@ -1058,7 +1058,7 @@ CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
      * If one step is not ack'ed by a node, the scanning process is terminated
      * and the correspondign error is returned. */
     switch (LSSmaster->fsState) {
-        case CO_LSSmaster_FS_CHECK:
+        case CO_LSSmaster_FS_STATE_CHECK:
             ret = CO_LSSmaster_FsCheckWait(LSSmaster, timeDifference_ms);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
                 CO_memset((uint8_t*)&fastscan->found, 0, sizeof(fastscan->found));
@@ -1069,10 +1069,10 @@ CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
                       CO_LSS_FASTSCAN_VENDOR_ID);
                 ret = CO_LSSmaster_WAIT_SLAVE;
 
-                LSSmaster->fsState = CO_LSSmaster_FS_SCAN;
+                LSSmaster->fsState = CO_LSSmaster_FS_STATE_SCAN;
             }
             break;
-        case CO_LSSmaster_FS_SCAN:
+        case CO_LSSmaster_FS_STATE_SCAN:
             ret = CO_LSSmaster_FsScanWait(LSSmaster, timeDifference_ms,
                       fastscan->scan[LSSmaster->fsLssSub]);
             if (ret == CO_LSSmaster_SCAN_FINISHED) {
@@ -1084,10 +1084,10 @@ CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
                           fastscan->scan[LSSmaster->fsLssSub],
                           fastscan->match.addr[LSSmaster->fsLssSub], next);
 
-                LSSmaster->fsState = CO_LSSmaster_FS_VERIFY;
+                LSSmaster->fsState = CO_LSSmaster_FS_STATE_VERIFY;
             }
             break;
-        case CO_LSSmaster_FS_VERIFY:
+        case CO_LSSmaster_FS_STATE_VERIFY:
             ret = CO_LSSmaster_FsVerifyWait(LSSmaster, timeDifference_ms,
                       fastscan->scan[LSSmaster->fsLssSub],
                       &fastscan->found.addr[LSSmaster->fsLssSub]);
@@ -1098,7 +1098,7 @@ CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
                  *   mirror that in the local copy */
                 next = CO_LSSmaster_FsSearchNext(LSSmaster, fastscan);
                 if (next == CO_LSS_FASTSCAN_VENDOR_ID) {
-                    /* Scanning finished, node is now in LSS configuration
+                    /* fastscan finished, one node is now in LSS configuration
                      * mode */
                     LSSmaster->state = CO_LSSmaster_STATE_CFG_SLECTIVE;
                 }
@@ -1107,10 +1107,12 @@ CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
                     ret = CO_LSSmaster_FsScanInitiate(LSSmaster,
                               timeDifference_ms, fastscan->scan[next], next);
                     if (ret == CO_LSSmaster_SCAN_FINISHED) {
+                        /* Scanning is not requested. Initiate verification
+                         * step in next function call */
                         ret = CO_LSSmaster_WAIT_SLAVE;
                     }
 
-                    LSSmaster->fsState = CO_LSSmaster_FS_SCAN;
+                    LSSmaster->fsState = CO_LSSmaster_FS_STATE_SCAN;
                 }
             }
             break;
