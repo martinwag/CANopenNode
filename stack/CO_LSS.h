@@ -79,6 +79,9 @@ extern "C" {
  * Be aware that changing the bit rate is a critical step for the network. A
  * failure will render the network unusable!
  *
+ * Using this implementation, only master or slave can be included in one
+ * node at a time.
+ *
  * For CAN identifiers see #CO_Default_CAN_ID_t
  */
 
@@ -158,7 +161,7 @@ typedef enum {
     CO_LSS_FASTSCAN_BIT0    = 0x00U, /**< Least significant bit of IDnumbners bit area to be checked */
     /* ... */
     CO_LSS_FASTSCAN_BIT31   = 0x1FU, /**< dito */
-    CO_LSS_FASTSCAN_CONFIRM = 0x80U  /**< All LSS slaves respond and all slaves are reset */
+    CO_LSS_FASTSCAN_CONFIRM = 0x80U  /**< All LSS slaves waiting for scan respond and previous scan is reset */
 } CO_LSS_fastscan_bitcheck;
 
 #define CO_LSS_FASTSCAN_BITCHECK_VALID(bit) ((bit>=CO_LSS_FASTSCAN_BIT0 && bit<=CO_LSS_FASTSCAN_BIT31) || bit==CO_LSS_FASTSCAN_CONFIRM)
