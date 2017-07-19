@@ -64,8 +64,9 @@ extern "C" {
  * This thread processes CO_process() function from CANopen.c file.
  *
  * @param interval maximum interval in ms, recommended value: 50 ms
+ * @param threadMainID ID of the thread that will run #threadMain_process()
  */
-extern void threadMain_init(uint16_t interval);
+extern void threadMain_init(uint16_t interval, TaskHandle_t threadMainID);
 
 /**
  * Cleanup mainline thread.

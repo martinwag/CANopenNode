@@ -52,16 +52,29 @@
 /* Mainline thread (threadMain) ***************************************************/
 static struct
 {
-  TickType_t interval_last;  /* time value CO_process() was called last time */
-  uint16_t interval_time;    /* calculated next timer interval */
+  TickType_t interval_start; /* time value CO_process() was called last time */
+  uint16_t interval_next;    /* calculated next timer interval */
   uint16_t interval;         /* max timer interval */
+  TaskHandle_t id;           /* ID of the main thread */
 } threadMain;
 
-void threadMain_init(uint16_t interval)
+/**
+ * This function resumes the main thread after an SDO event happened
+ */
+static void threadMain_resumeCallback(void)
+{
+  if (threadMain.id != 0) {
+    xTaskAbortDelay(threadMain.id);
+  }
+}
+
+void threadMain_init(uint16_t interval, TaskHandle_t threadMainID)
 {
   threadMain.interval = interval;
-  threadMain.interval_time = 1; /* do not block the first time. 0 is not allowed by the OS */
-  threadMain.interval_last = xTaskGetTickCount();
+  threadMain.interval_next = 1; /* do not block the first time. 0 is not allowed by the OS */
+  threadMain.interval_start = xTaskGetTickCount();
+  threadMain.id = threadMainID;
+  CO_SDO_initCallback(CO->SDO[0], threadMain_resumeCallback);
 }
 
 void threadMain_close(void)
@@ -74,11 +87,21 @@ void threadMain_process(CO_NMT_reset_cmd_t *reset)
   uint16_t diff;
   uint16_t next;
   TickType_t now;
+  TickType_t start;
 
-  now = threadMain.interval_last;
-  vTaskDelayUntil(&now, pdMS_TO_TICKS(threadMain.interval_time)); /* calculates "now" */
+  start = threadMain.interval_start;
+  vTaskDelayUntil(&start, pdMS_TO_TICKS(threadMain.interval_next));
+  now = xTaskGetTickCount();
+  if (start > now) {
+    /* vTaskDelayUntil returns the delay end time in value "start". If this time
+     * is in the future, delay has been aborted by callback.
+     * Unfortunately, vTaskDelayUntil() doesn't give us a exact time stamp it
+     * was abortet, so we have to take a timestamp afterwards. This introduces
+     * some inaccuracy. */
+    start = now;
+  }
 
-  diff = (uint16_t)(now - threadMain.interval_last);
+  diff = (uint16_t)(start - threadMain.interval_start);
 
   do {
     next = threadMain.interval;
@@ -86,8 +109,9 @@ void threadMain_process(CO_NMT_reset_cmd_t *reset)
     diff = 0;
   } while ((*reset == CO_RESET_NOT) && (next == 0));
 
-  threadMain.interval_time = next;
-  threadMain.interval_last = now;
+  /* prepare next call */
+  threadMain.interval_next = next;
+  threadMain.interval_start = start;
 }
 
 /* Realtime thread (threadRT) *****************************************************/
