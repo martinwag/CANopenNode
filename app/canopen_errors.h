@@ -21,7 +21,7 @@
  * aus CANopenNode.
  * F"ur jeden Fehler wird ein Bit im OD Eintrag "Error Status Bits" reserviert.
  */
-class canopen_errors {
+class Canopen_errors {
   public:
 
     /**

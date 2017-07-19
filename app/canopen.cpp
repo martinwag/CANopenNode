@@ -63,9 +63,9 @@ const CLI_Command_Definition_t terminal =
 extern void housekeeping_main(void);
 
 /* Klasse canopen */
-class canopen canopen;
+class Canopen canopen;
 /* Klassenvariablen */
-QueueHandle_t canopen::nmt_event_queue;
+QueueHandle_t Canopen::nmt_event_queue;
 
 /** @defgroup Objektverzeichnishandler
  * Objektverzeichnishandler in der Reihenfolge, in der die Eintr"age
@@ -119,7 +119,7 @@ QueueHandle_t canopen::nmt_event_queue;
  * @param p_odf_arg OD Eintrag
  * @return CO_SDO_AB_NONE wenn Steuerung erfolgreich
  */
-CO_SDO_abortCode_t canopen::store_parameters_callback(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::store_parameters_callback(CO_ODF_arg_t *p_odf_arg)
 {
   CO_ReturnError_t result;
   u32 signature;
@@ -162,7 +162,7 @@ CO_SDO_abortCode_t canopen::store_parameters_callback(CO_ODF_arg_t *p_odf_arg)
  * @param p_odf_arg OD Eintrag
  * @return CO_SDO_AB_NONE wenn Steuerung erfolgreich
  */
-CO_SDO_abortCode_t canopen::restore_default_parameters_callback(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::restore_default_parameters_callback(CO_ODF_arg_t *p_odf_arg)
 {
   u32 signature;
   u32 *p_data;
@@ -200,7 +200,7 @@ CO_SDO_abortCode_t canopen::restore_default_parameters_callback(CO_ODF_arg_t *p_
  * implementiert, die Busfilter entsprechend parametriert und die Uhrzeit COB ID
  * empfangen werden.
  */
-CO_SDO_abortCode_t canopen::cob_id_timestamp_callback(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::cob_id_timestamp_callback(CO_ODF_arg_t *p_odf_arg)
 {
   if (p_odf_arg->reading == true) {
     return CO_SDO_AB_NONE;
@@ -291,7 +291,7 @@ CO_SDO_abortCode_t canopen::cob_id_timestamp_callback(CO_ODF_arg_t *p_odf_arg)
  * @param p_odf_arg OD Eintrag
  * @return CO_SDO_AB_NONE wenn Steuerung erfolgreich
  */
-CO_SDO_abortCode_t canopen::program_control_callback(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::program_control_callback(CO_ODF_arg_t *p_odf_arg)
 {
   bootloader_program_control_t control;
   bootloader_state_t state;
@@ -342,7 +342,7 @@ CO_SDO_abortCode_t canopen::program_control_callback(CO_ODF_arg_t *p_odf_arg)
  * @param p_odf_arg OD Eintrag
  * @return CO_SDO_AB_NONE
  */
-CO_SDO_abortCode_t canopen::temperature_callback(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::temperature_callback(CO_ODF_arg_t *p_odf_arg)
 {
   float temp;
 
@@ -365,7 +365,7 @@ CO_SDO_abortCode_t canopen::temperature_callback(CO_ODF_arg_t *p_odf_arg)
  * @param p_odf_arg OD Eintrag
  * @return CO_SDO_AB_NONE
  */
-CO_SDO_abortCode_t canopen::voltage_callback(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::voltage_callback(CO_ODF_arg_t *p_odf_arg)
 {
   float vss;
 
@@ -388,7 +388,7 @@ CO_SDO_abortCode_t canopen::voltage_callback(CO_ODF_arg_t *p_odf_arg)
  * @param p_odf_arg OD Eintrag
  * @return CO_SDO_AB_NONE wenn erfolgreich
  */
-CO_SDO_abortCode_t canopen::can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg)
 {
   can_info_t rti;
   can_state_t state;
@@ -490,7 +490,7 @@ CO_SDO_abortCode_t canopen::can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg)
  *
  * Diese Funktion darf nur vor dem Initialisieren des CO Stacks aufgerufen werden!
  */
-void canopen::od_set_defaults(void)
+void Canopen::od_set_defaults(void)
 {
   const char *p_version;
   u32 id;
@@ -542,13 +542,13 @@ void canopen::od_set_defaults(void)
  *
  * @param state neuer NMT Zustand
  */
-void canopen::nmt_state_callback(CO_NMT_internalState_t state)
+void Canopen::nmt_state_callback(CO_NMT_internalState_t state)
 {
   /* Mit dieser Implementierung ist nur ein Konsument der Events f"ur alle
    * Instanzen m"oglich. Falls mehr ben"otigt werden m"ussen die Queues in einer
    * Liste abgelegt werden */
-  if (canopen::nmt_event_queue != NULL) {
-    (void)xQueueSend(canopen::nmt_event_queue,
+  if (Canopen::nmt_event_queue != NULL) {
+    (void)xQueueSend(Canopen::nmt_event_queue,
                      reinterpret_cast<nmt_event_t*>(&state), 0);
   }
 }
@@ -560,7 +560,7 @@ void canopen::nmt_state_callback(CO_NMT_internalState_t state)
  * @param p_odf_arg OD Eintrag
  * @return CO_SDO_AB_NONE
  */
-CO_SDO_abortCode_t canopen::generic_write_callback(CO_ODF_arg_t* p_odf_arg)
+CO_SDO_abortCode_t Canopen::generic_write_callback(CO_ODF_arg_t* p_odf_arg)
 {
   od_event_t event;
   QueueHandle_t *p_event_queue;
@@ -589,7 +589,7 @@ CO_SDO_abortCode_t canopen::generic_write_callback(CO_ODF_arg_t* p_odf_arg)
  * @param obj_dict_id Zugeh"origes Objekt im Objektverzeichnis
  * @param pODFunc Callback Funktion
  */
-void canopen::set_callback(u16 obj_dict_id,
+void Canopen::set_callback(u16 obj_dict_id,
                            CO_SDO_abortCode_t (*pODFunc)(CO_ODF_arg_t *ODF_arg))
 {
   CO_OD_configure(CO->SDO[0], obj_dict_id, pODFunc, this, NULL, 0);
@@ -603,7 +603,7 @@ void canopen::set_callback(u16 obj_dict_id,
  * @param size Größe des hinterlegten Eintrags in Bytes
  * @return Zeiger auf Eintrag oder NULL falls nicht existend
  */
-void* canopen::get_od_pointer(u16 index, u8 subindex, size_t size)
+void* Canopen::get_od_pointer(u16 index, u8 subindex, size_t size)
 {
   u16 entry;
   u8 length;
@@ -629,7 +629,7 @@ void* canopen::get_od_pointer(u16 index, u8 subindex, size_t size)
  * @param bit_rate Bitrate
  * @return true Erfolgreich
  */
-bool canopen::store_lss_config_callback(uint8_t nid, uint16_t bit_rate)
+bool Canopen::store_lss_config_callback(uint8_t nid, uint16_t bit_rate)
 {
   CO_ReturnError_t result;
 
@@ -643,7 +643,7 @@ bool canopen::store_lss_config_callback(uint8_t nid, uint16_t bit_rate)
 /**
  * Zeitkritische CANopen Abarbeitung
  */
-void canopen::timer_rx_thread(void)
+void Canopen::timer_rx_thread(void)
 {
   u8 wdt;
 
@@ -671,17 +671,17 @@ void canopen::timer_rx_thread(void)
  * @todo Linux Version - CO_OD_find() kostet Zeit, Entries in Tabelle ablegen
  */
 
-void canopen::od_lock(void)
+void Canopen::od_lock(void)
 {
   CO_LOCK_OD();
 }
 
-void canopen::od_unlock(void)
+void Canopen::od_unlock(void)
 {
   CO_UNLOCK_OD();
 }
 
-void canopen::od_get(u16 index, u8 subindex, u8* p_retval)
+void Canopen::od_get(u16 index, u8 subindex, u8* p_retval)
 {
   u8 *p;
 
@@ -693,7 +693,7 @@ void canopen::od_get(u16 index, u8 subindex, u8* p_retval)
   *p_retval = *p;
 }
 
-void canopen::od_get(u16 index, u8 subindex, u16* p_retval)
+void Canopen::od_get(u16 index, u8 subindex, u16* p_retval)
 {
   u16 *p;
 
@@ -705,7 +705,7 @@ void canopen::od_get(u16 index, u8 subindex, u16* p_retval)
   *p_retval = *p;
 }
 
-void canopen::od_get(u16 index, u8 subindex, u32* p_retval)
+void Canopen::od_get(u16 index, u8 subindex, u32* p_retval)
 {
   u32 *p;
 
@@ -717,7 +717,7 @@ void canopen::od_get(u16 index, u8 subindex, u32* p_retval)
   *p_retval = *p;
 }
 
-void canopen::od_get(u16 index, u8 subindex, u64* p_retval)
+void Canopen::od_get(u16 index, u8 subindex, u64* p_retval)
 {
   u64 *p;
 
@@ -729,7 +729,7 @@ void canopen::od_get(u16 index, u8 subindex, u64* p_retval)
   *p_retval = *p;
 }
 
-void canopen::od_get(u16 index, u8 subindex, s8* p_retval)
+void Canopen::od_get(u16 index, u8 subindex, s8* p_retval)
 {
   s8 *p;
 
@@ -741,7 +741,7 @@ void canopen::od_get(u16 index, u8 subindex, s8* p_retval)
   *p_retval = *p;
 }
 
-void canopen::od_get(u16 index, u8 subindex, s16* p_retval)
+void Canopen::od_get(u16 index, u8 subindex, s16* p_retval)
 {
   s16 *p;
 
@@ -753,7 +753,7 @@ void canopen::od_get(u16 index, u8 subindex, s16* p_retval)
   *p_retval = *p;
 }
 
-void canopen::od_get(u16 index, u8 subindex, s32* p_retval)
+void Canopen::od_get(u16 index, u8 subindex, s32* p_retval)
 {
   s32 *p;
 
@@ -765,7 +765,7 @@ void canopen::od_get(u16 index, u8 subindex, s32* p_retval)
   *p_retval = *p;
 }
 
-void canopen::od_get(u16 index, u8 subindex, s64* p_retval)
+void Canopen::od_get(u16 index, u8 subindex, s64* p_retval)
 {
   s64 *p;
 
@@ -777,7 +777,7 @@ void canopen::od_get(u16 index, u8 subindex, s64* p_retval)
   *p_retval = *p;
 }
 
-void canopen::od_get(u16 index, u8 subindex, f32* p_retval)
+void Canopen::od_get(u16 index, u8 subindex, f32* p_retval)
 {
   f32 *p;
 
@@ -789,7 +789,7 @@ void canopen::od_get(u16 index, u8 subindex, f32* p_retval)
   *p_retval = *p;
 }
 
-void canopen::od_get(u16 index, u8 subindex, const char** pp_visible_string)
+void Canopen::od_get(u16 index, u8 subindex, const char** pp_visible_string)
 {
   u16 entry;
   char *p;
@@ -809,7 +809,7 @@ void canopen::od_get(u16 index, u8 subindex, const char** pp_visible_string)
   *pp_visible_string = p;
 }
 
-void canopen::od_set(u16 index, u8 subindex, u8 val)
+void Canopen::od_set(u16 index, u8 subindex, u8 val)
 {
   u8 *p;
 
@@ -820,7 +820,7 @@ void canopen::od_set(u16 index, u8 subindex, u8 val)
   *p = val;
 }
 
-void canopen::od_set(u16 index, u8 subindex, u16 val)
+void Canopen::od_set(u16 index, u8 subindex, u16 val)
 {
   u16 *p;
 
@@ -831,7 +831,7 @@ void canopen::od_set(u16 index, u8 subindex, u16 val)
   *p = val;
 }
 
-void canopen::od_set(u16 index, u8 subindex, u32 val)
+void Canopen::od_set(u16 index, u8 subindex, u32 val)
 {
   u32 *p;
 
@@ -842,7 +842,7 @@ void canopen::od_set(u16 index, u8 subindex, u32 val)
   *p = val;
 }
 
-void canopen::od_set(u16 index, u8 subindex, u64 val)
+void Canopen::od_set(u16 index, u8 subindex, u64 val)
 {
   u64 *p;
 
@@ -853,7 +853,7 @@ void canopen::od_set(u16 index, u8 subindex, u64 val)
   *p = val;
 }
 
-void canopen::od_set(u16 index, u8 subindex, s8 val)
+void Canopen::od_set(u16 index, u8 subindex, s8 val)
 {
   s8 *p;
 
@@ -864,7 +864,7 @@ void canopen::od_set(u16 index, u8 subindex, s8 val)
   *p = val;
 }
 
-void canopen::od_set(u16 index, u8 subindex, s16 val)
+void Canopen::od_set(u16 index, u8 subindex, s16 val)
 {
   s16 *p;
 
@@ -875,7 +875,7 @@ void canopen::od_set(u16 index, u8 subindex, s16 val)
   *p = val;
 }
 
-void canopen::od_set(u16 index, u8 subindex, s32 val)
+void Canopen::od_set(u16 index, u8 subindex, s32 val)
 {
   s32 *p;
 
@@ -886,7 +886,7 @@ void canopen::od_set(u16 index, u8 subindex, s32 val)
   *p = val;
 }
 
-void canopen::od_set(u16 index, u8 subindex, s64 val)
+void Canopen::od_set(u16 index, u8 subindex, s64 val)
 {
   s64 *p;
 
@@ -897,7 +897,7 @@ void canopen::od_set(u16 index, u8 subindex, s64 val)
   *p = val;
 }
 
-void canopen::od_set(u16 index, u8 subindex, f32 val)
+void Canopen::od_set(u16 index, u8 subindex, f32 val)
 {
   f32 *p;
 
@@ -908,7 +908,7 @@ void canopen::od_set(u16 index, u8 subindex, f32 val)
   *p = val;
 }
 
-void canopen::od_set(u16 index, u8 subindex, const char* p_visible_string)
+void Canopen::od_set(u16 index, u8 subindex, const char* p_visible_string)
 {
   u16 entry;
   u16 length;
@@ -941,12 +941,12 @@ void canopen::od_set(u16 index, u8 subindex, const char* p_visible_string)
  * @defgroup Zugriffsfunktionen auf CANopen Emergency Funktionen
  */
 
-bool canopen::error_get(errorcode_t error)
+bool Canopen::error_get(errorcode_t error)
 {
   return CO_isError(CO->em, error);
 }
 
-void canopen::error_set(errorcode_t error, u32 detail)
+void Canopen::error_set(errorcode_t error, u32 detail)
 {
   u16 co_emergency;
 
@@ -993,7 +993,7 @@ void canopen::error_set(errorcode_t error, u32 detail)
                  detail);
 }
 
-void canopen::error_reset(errorcode_t error, u32 detail)
+void Canopen::error_reset(errorcode_t error, u32 detail)
 {
   if (error < CO_EM_MANUFACTURER_START) {
     log_printf(LOG_ERR, ERR_CANOPEN_INVALID_ERROR, error);
@@ -1009,21 +1009,21 @@ void canopen::error_reset(errorcode_t error, u32 detail)
  * @defgroup Zugriffsfunktionen auf Netzwerkmanagement
  */
 
-void canopen::od_event(u16 index, QueueHandle_t event_queue)
+void Canopen::od_event(u16 index, QueueHandle_t event_queue)
 {
   CO_OD_configure(CO->SDO[0], index, generic_write_callback,
                   reinterpret_cast<void*>(event_queue), NULL, 0);
 }
 
-void canopen::nmt_event(QueueHandle_t event_queue)
+void Canopen::nmt_event(QueueHandle_t event_queue)
 {
-  canopen::nmt_event_queue = event_queue;
+  Canopen::nmt_event_queue = event_queue;
   CO_NMT_initCallback(CO->NMT, &nmt_state_callback);
 }
 
 /** @}*/
 
-CO_ReturnError_t canopen::init(u8 nid, u32 interval)
+CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
 {
   CO_ReturnError_t co_result;
   BaseType_t os_result;
@@ -1143,7 +1143,7 @@ CO_ReturnError_t canopen::init(u8 nid, u32 interval)
   return CO_ERROR_NO;
 }
 
-void canopen::set_nid(u8 nid)
+void Canopen::set_nid(u8 nid)
 {
   u8 persistent_nid;
   u16 persistent_bit;
@@ -1154,7 +1154,7 @@ void canopen::set_nid(u8 nid)
   }
 }
 
-void canopen::deinit(void)
+void Canopen::deinit(void)
 {
   /* RX Handlerthread synchronisieren. Der Thread suspended sich dann
    * selbst. */
@@ -1169,7 +1169,7 @@ void canopen::deinit(void)
   this->active_nid = 0;
 }
 
-void canopen::process(void)
+void Canopen::process(void)
 {
   u16 dummy;
   u8 pending_nid;
@@ -1213,7 +1213,7 @@ void canopen::process(void)
 /*
  * Auswahl Adresse und Baudrate
  */
-BaseType_t canopen::cmd_terminal( char *pcWriteBuffer,
+BaseType_t Canopen::cmd_terminal( char *pcWriteBuffer,
                                   size_t xWriteBufferLen,
                                   const char *pcCommandString )
 {
@@ -1266,49 +1266,49 @@ BaseType_t canopen::cmd_terminal( char *pcWriteBuffer,
 /*
  * Callback Wrapper
  */
-void canopen::timer_rx_thread_wrapper(void *p)
+void Canopen::timer_rx_thread_wrapper(void *p)
 {
-  reinterpret_cast<canopen*>(p)->timer_rx_thread();
+  reinterpret_cast<Canopen*>(p)->timer_rx_thread();
 }
 
-bool_t canopen::store_lss_config_callback_wrapper(void *p_object, uint8_t nid, uint16_t bit_rate)
+bool_t Canopen::store_lss_config_callback_wrapper(void *p_object, uint8_t nid, uint16_t bit_rate)
 {
-  return reinterpret_cast<canopen*>(p_object)->store_lss_config_callback(nid, bit_rate);
+  return reinterpret_cast<Canopen*>(p_object)->store_lss_config_callback(nid, bit_rate);
 }
 
-CO_SDO_abortCode_t canopen::store_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::store_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
-  return reinterpret_cast<canopen*>(p_odf_arg->object)->store_parameters_callback(p_odf_arg);
+  return reinterpret_cast<Canopen*>(p_odf_arg->object)->store_parameters_callback(p_odf_arg);
 }
 
-CO_SDO_abortCode_t canopen::restore_default_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::restore_default_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
-  return reinterpret_cast<canopen*>(p_odf_arg->object)->restore_default_parameters_callback(p_odf_arg);
+  return reinterpret_cast<Canopen*>(p_odf_arg->object)->restore_default_parameters_callback(p_odf_arg);
 }
 
-CO_SDO_abortCode_t canopen::cob_id_timestamp_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::cob_id_timestamp_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
-  return reinterpret_cast<canopen*>(p_odf_arg->object)->cob_id_timestamp_callback(p_odf_arg);
+  return reinterpret_cast<Canopen*>(p_odf_arg->object)->cob_id_timestamp_callback(p_odf_arg);
 }
 
-CO_SDO_abortCode_t canopen::program_control_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::program_control_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
-  return reinterpret_cast<canopen*>(p_odf_arg->object)->program_control_callback(p_odf_arg);
+  return reinterpret_cast<Canopen*>(p_odf_arg->object)->program_control_callback(p_odf_arg);
 }
 
-CO_SDO_abortCode_t canopen::temperature_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::temperature_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
-  return reinterpret_cast<canopen*>(p_odf_arg->object)->temperature_callback(p_odf_arg);
+  return reinterpret_cast<Canopen*>(p_odf_arg->object)->temperature_callback(p_odf_arg);
 }
 
-CO_SDO_abortCode_t canopen::voltage_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::voltage_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
-  return reinterpret_cast<canopen*>(p_odf_arg->object)->voltage_callback(p_odf_arg);
+  return reinterpret_cast<Canopen*>(p_odf_arg->object)->voltage_callback(p_odf_arg);
 }
 
-CO_SDO_abortCode_t canopen::can_runtime_info_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+CO_SDO_abortCode_t Canopen::can_runtime_info_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
-  return reinterpret_cast<canopen*>(p_odf_arg->object)->can_runtime_info_callback(p_odf_arg);
+  return reinterpret_cast<Canopen*>(p_odf_arg->object)->can_runtime_info_callback(p_odf_arg);
 }
 
 /**

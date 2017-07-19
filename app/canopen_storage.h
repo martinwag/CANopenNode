@@ -25,7 +25,7 @@
  *
  * wir orientieren uns an der Vorlage eeprom.c/h aus dem Stack Treiberbeispiel
  */
-class canopen_storage {
+class Canopen_storage {
   protected:
     static const u16 max_size = storage.canopen_size;
     static const u16 od_reserved_size = 1024 * 2;

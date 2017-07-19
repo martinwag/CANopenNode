@@ -29,12 +29,12 @@
 /**
  * Die CANopen Klasse
  */
-class canopen: public canopen_errors {
+class Canopen: public Canopen_errors {
   private:
     CO_NMT_reset_cmd_t reset;         /*!< Resetanforderung */
     u8 active_nid;                    /*!< Eigene CANopen Node ID */
     static const u16 active_bit = 1000; /*!< Standard Bitrate */
-    class canopen_storage storage;    /*!< OD Parameter */
+    class Canopen_storage storage;    /*!< OD Parameter */
     static const u8 main_interval = 50; /*!< ms, max. Wartezeit auf Events in process() */
     u32 worker_interval;              /*!< CO Thread Intervall */
     static QueueHandle_t nmt_event_queue; /*!< per <nmt_event()> eingetragene Queue */
@@ -300,7 +300,7 @@ class canopen: public canopen_errors {
 
 };
 
-extern class canopen canopen;
+extern class Canopen canopen;
 
 #endif /* SRC_CANOPEN_CANOPEN_H_ */
 

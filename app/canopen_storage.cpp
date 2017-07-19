@@ -20,7 +20,7 @@
 #include "globdef.h"
 #include "checksum.h"
 
-CO_ReturnError_t canopen_storage::load_od(void)
+CO_ReturnError_t Canopen_storage::load_od(void)
 {
   u32 crc;
 
@@ -61,7 +61,7 @@ CO_ReturnError_t canopen_storage::load_od(void)
   return CO_ERROR_NO;
 }
 
-CO_ReturnError_t canopen_storage::save_od(void)
+CO_ReturnError_t Canopen_storage::save_od(void)
 {
   u32 crc;
   u32 fw_id;
@@ -92,7 +92,7 @@ CO_ReturnError_t canopen_storage::save_od(void)
   return CO_ERROR_NO;
 }
 
-void canopen_storage::restore_od(void)
+void Canopen_storage::restore_od(void)
 {
   const u32 dummy = 0;
 
@@ -101,7 +101,7 @@ void canopen_storage::restore_od(void)
   (void)storage.write(od_start, sizeof(dummy), reinterpret_cast<const u8*>(&dummy));
 }
 
-CO_ReturnError_t canopen_storage::load_lss(u8 *p_nid, u16 *p_bit)
+CO_ReturnError_t Canopen_storage::load_lss(u8 *p_nid, u16 *p_bit)
 {
   u32 crc;
   struct lss lss;
@@ -128,7 +128,7 @@ CO_ReturnError_t canopen_storage::load_lss(u8 *p_nid, u16 *p_bit)
   return CO_ERROR_NO;
 }
 
-CO_ReturnError_t canopen_storage::save_lss(u8 nid, u16 bit)
+CO_ReturnError_t Canopen_storage::save_lss(u8 nid, u16 bit)
 {
   u32 crc;
   struct lss lss;
@@ -158,7 +158,7 @@ CO_ReturnError_t canopen_storage::save_lss(u8 nid, u16 bit)
   return CO_ERROR_NO;
 }
 
-CO_ReturnError_t canopen_storage::load_test(u8 *p_data, u16 *p_size)
+CO_ReturnError_t Canopen_storage::load_test(u8 *p_data, u16 *p_size)
 {
   u32 crc;
   struct test test;
@@ -192,7 +192,7 @@ CO_ReturnError_t canopen_storage::load_test(u8 *p_data, u16 *p_size)
   return CO_ERROR_NO;
 }
 
-CO_ReturnError_t canopen_storage::save_test(const u8 *p_data, u16 size)
+CO_ReturnError_t Canopen_storage::save_test(const u8 *p_data, u16 size)
 {
   u32 crc;
   struct test test;
