@@ -1086,7 +1086,6 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
     (void)FreeRTOS_CLIRegisterCommand(&terminal);
     this->terminal_registred = true;
   }
-#endif
 
   /* Get Node ID */
   while (true) {
@@ -1099,6 +1098,10 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
     housekeeping_main();
     (void)CO_CANrxWait(CO->CANmodule[0], this->main_interval);
   };
+#else
+  /* no LSS in unit testing */
+  pending_nid = 127;
+#endif
   if (pending_nid != persistent_nid) {
     log_printf(LOG_NOTICE, NOTE_LSS, pending_nid);
   }
@@ -1113,7 +1116,7 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
 
   /* Infos eintragen */
   this->worker_interval = interval;
-  threadMain_init(this->main_interval); /* ms Interval */
+  threadMain_init(this->main_interval, xTaskGetCurrentTaskHandle()); /* ms Interval */
 
   /* OD Callbacks */
   set_callback(OD_1010_storeParameters, store_parameters_callback_wrapper);
