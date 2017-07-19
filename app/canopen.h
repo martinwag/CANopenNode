@@ -29,7 +29,7 @@
 /**
  * Die CANopen Klasse
  */
-class canopen: public canopen_errors {
+class Canopen: public canopen_errors {
   private:
     CO_NMT_reset_cmd_t reset;         /*!< Resetanforderung */
     u8 addr;                          /*!< eigene Moduladresse */
@@ -293,7 +293,9 @@ class canopen: public canopen_errors {
 
 };
 
-extern class canopen canopen;
+#ifndef MOCK_CANOPEN
+  extern class Canopen canopen;
+#endif
 
 #endif /* SRC_CANOPEN_CANOPEN_H_ */
 
