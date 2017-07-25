@@ -26,6 +26,7 @@
 #include "wdt.h"
 #include "ad.h"
 #include "led.h"
+#include "daisychain.h"
 #include "bootloader.h"
 #include "terminal.h"
 #include "system.h"
@@ -302,7 +303,7 @@ CO_SDO_abortCode_t Canopen::program_control_callback(CO_ODF_arg_t *p_odf_arg)
 
   control = static_cast<bootloader_program_control_t>(*(p_odf_arg->data));
 
-  state = bootloader_request(control, active_nid);
+  state = bootloader_request(control, *p_active_nid);
   switch (state) {
     case BOOTLAODER_TIMEOUT:
       return CO_SDO_AB_TIMEOUT; //todo ist dieser Errorcode hier OK? Ist eigentlich SDO Timeout
@@ -333,11 +334,19 @@ CO_SDO_abortCode_t Canopen::program_control_callback(CO_ODF_arg_t *p_odf_arg)
  * Platzhalter f"ur modulspezifische OD Eintr"age
  */
 
-/* 2100 - Diagnose: Error status bits
+/* 2100 - Error status bits
  * ro, wird durch Stack verwaltet
  */
 
-/** 2108 - Diagnose: Temperature
+/* 2101 - CAN node ID
+ * ro, wird beim Startup gesetzt
+ */
+
+/* 2102 - CAN bit rate
+ * ro, wird beim Startup gesetzt
+ */
+
+/** 2108 - Temperature
  *
  * @param p_odf_arg OD Eintrag
  * @return CO_SDO_AB_NONE
@@ -360,7 +369,7 @@ CO_SDO_abortCode_t Canopen::temperature_callback(CO_ODF_arg_t *p_odf_arg)
   return CO_SDO_AB_NONE;
 }
 
-/** 2109 - Diagnose: Voltage
+/** 2109 - Voltage
  *
  * @param p_odf_arg OD Eintrag
  * @return CO_SDO_AB_NONE
@@ -452,6 +461,50 @@ CO_SDO_abortCode_t Canopen::can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg)
   return CO_SDO_AB_NONE;
 }
 
+/* 2111 - STM32 UID
+ * const
+ */
+
+/** 2112 - Daisy Chain
+ *
+ * @param p_odf_arg OD Eintrag
+ * @return CO_SDO_AB_NONE wenn erfolgreich
+ */
+CO_SDO_abortCode_t Canopen::daisychain_callback(CO_ODF_arg_t *p_odf_arg)
+{
+  daisy_next_t next;
+
+  switch (p_odf_arg->subIndex) {
+    case OD_2112_0_daisyChain_maxSubIndex:
+      break;
+    case OD_2112_1_daisyChain_shiftIn:
+      if (p_odf_arg->reading == true) {
+        return CO_SDO_AB_NONE;
+      }
+      if (*p_odf_arg->data != 0) {
+        /* Schreibzugriff ung"ultig, vorherigen Wert wieder herstellen */
+        *p_odf_arg->data = *(reinterpret_cast<const u8*>(p_odf_arg->ODdataStorage));
+        return CO_SDO_AB_INVALID_VALUE;
+      }
+      break;
+    case OD_2112_2_daisyChain_shiftOut:
+      if (*(reinterpret_cast<tBoolean*>(p_odf_arg->data)) == TRUE) {
+        daisy_shift_so();
+      }
+      break;
+    case OD_2112_3_daisyChain_next:
+      daisy_read_so(&next);
+      if (next == DAISY_NEXT_OCCUPIED) {
+        *p_odf_arg->data = TRUE;
+      } else {
+        *p_odf_arg->data = FALSE;
+      }
+      break;
+  }
+
+  return CO_SDO_AB_NONE;
+}
+
 /* ab 2200 - Allgemein
  * Auf diese Eintr"age wird direkt aus den FBs zugegriffen
  */
@@ -531,9 +584,18 @@ void Canopen::od_set_defaults(void)
   id = globals.get_app_checksum();
   OD_programSoftwareIdentification[0] = id;
 
-  /* 0x2111 - 96 Bit UID */
+  /* 2102 - CANopen Node ID */
+  OD_CANNodeID = 0;
+
+  /* 2102 - CAN bit rate */
+  OD_CANBitRate = this->active_bit;
+
+  /* 2111 - 96 Bit UID */
   system_get_uid96(&OD_UID[ODA_UID_word0], &OD_UID[ODA_UID_word1],
                    &OD_UID[ODA_UID_word2]);
+
+  /* 2112 - Daisy Chain */
+  OD_daisyChain.shiftIn = 0;
 }
 
 /**
@@ -620,6 +682,24 @@ void* Canopen::get_od_pointer(u16 index, u8 subindex, size_t size)
   }
 
   return CO_OD_getDataPointer(CO->SDO[0], entry, subindex);
+}
+
+/**
+ * Daisychain Shift In Eventhandler
+ */
+void Canopen::daisychain_event_callback(void)
+{
+  u8 nid;
+  u8 shift_count;
+
+  CO_LOCK_OD();
+  OD_daisyChain.shiftIn ++;
+
+  nid = OD_CANNodeID;
+  shift_count = OD_daisyChain.shiftIn;
+  CO_UNLOCK_OD();
+
+  (void)CO_sendDaisyEvent(CO, shift_count, nid);
 }
 
 /**
@@ -1031,12 +1111,12 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
   u8 pending_nid;
   u16 dummy;
 
-  persistent_nid = 0;
-  pending_nid = 0;
-  this->active_nid = CO_LSS_NODE_ID_ASSIGNMENT;
-
   /* Objektverzeichnis Festwerte eintragen */
   od_set_defaults();
+
+  persistent_nid = 0;
+  pending_nid = 0;
+  *this->p_active_nid = CO_LSS_NODE_ID_ASSIGNMENT;
 
   /* NVM Werte laden */
   co_result = storage.load_od();
@@ -1082,14 +1162,15 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
   CO_CANsetNormalMode(CO->CANmodule[0]);
 
 #ifndef UNIT_TEST
-  if (this->terminal_registred != true) {
+  if (this->once != true) {
     (void)FreeRTOS_CLIRegisterCommand(&terminal);
-    this->terminal_registred = true;
+    (void)daisy_init(MODTYPE_HW_TEMPLATE, daisychain_event_callback_wrapper, this);
+    this->once = true;
   }
 
   /* Get Node ID */
   while (true) {
-    CO_LSSslave_process(CO->LSSslave, this->active_bit, this->active_nid,
+    CO_LSSslave_process(CO->LSSslave, this->active_bit, *this->p_active_nid,
                         &dummy, &pending_nid);
     if (pending_nid != CO_LSS_NODE_ID_ASSIGNMENT) {
       break;
@@ -1107,8 +1188,8 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
   }
 
   /* start CANopen */
-  this->active_nid = pending_nid;
-  co_result = CO_CANopenInit(this->active_nid);
+  *this->p_active_nid = pending_nid;
+  co_result = CO_CANopenInit(*this->p_active_nid);
   if (co_result != CO_ERROR_NO) {
     log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
     return co_result;
@@ -1126,6 +1207,7 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
   set_callback(OD_2108_temperature, temperature_callback_wrapper);
   set_callback(OD_2109_voltage, voltage_callback_wrapper);
   set_callback(OD_2110_canRuntimeInfo, can_runtime_info_callback_wrapper);
+  set_callback(OD_2112_daisyChain, daisychain_callback_wrapper);
 
   /* Configure Timer function for execution every <interval> millisecond */
   CANrx_threadTmr_init(this->worker_interval);
@@ -1169,7 +1251,7 @@ void Canopen::deinit(void)
   CO_delete(CAN_MODULE_A);
 
   this->reset = CO_RESET_NOT;
-  this->active_nid = 0;
+  *this->p_active_nid = 0;
 }
 
 void Canopen::process(void)
@@ -1187,7 +1269,7 @@ void Canopen::process(void)
   if (reset != CO_RESET_NOT){
     log_printf(LOG_DEBUG, DEBUG_CANOPEN_RESET, reset);
 
-    CO_LSSslave_process(CO->LSSslave, this->active_bit, this->active_nid,
+    CO_LSSslave_process(CO->LSSslave, this->active_bit, *this->p_active_nid,
                         &dummy, &pending_nid);
 
     switch (reset) {
@@ -1274,6 +1356,11 @@ void Canopen::timer_rx_thread_wrapper(void *p)
   reinterpret_cast<Canopen*>(p)->timer_rx_thread();
 }
 
+void Canopen::daisychain_event_callback_wrapper(void *p_object)
+{
+  return reinterpret_cast<Canopen*>(p_object)->daisychain_event_callback();
+}
+
 bool_t Canopen::store_lss_config_callback_wrapper(void *p_object, uint8_t nid, uint16_t bit_rate)
 {
   return reinterpret_cast<Canopen*>(p_object)->store_lss_config_callback(nid, bit_rate);
@@ -1312,6 +1399,11 @@ CO_SDO_abortCode_t Canopen::voltage_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 CO_SDO_abortCode_t Canopen::can_runtime_info_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
   return reinterpret_cast<Canopen*>(p_odf_arg->object)->can_runtime_info_callback(p_odf_arg);
+}
+
+CO_SDO_abortCode_t Canopen::daisychain_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+{
+  return reinterpret_cast<Canopen*>(p_odf_arg->object)->daisychain_callback(p_odf_arg);
 }
 
 /**

@@ -32,13 +32,13 @@
 class Canopen: public Canopen_errors {
   private:
     CO_NMT_reset_cmd_t reset;         /*!< Resetanforderung */
-    u8 active_nid;                    /*!< Eigene CANopen Node ID */
+    u8 *const p_active_nid = &OD_CANNodeID; /*!< Eigene CANopen Node ID. Zeigt auf Eintrag im OD. */
     static const u16 active_bit = 1000; /*!< Standard Bitrate */
     class Canopen_storage storage;    /*!< OD Parameter */
     static const u8 main_interval = 50; /*!< ms, max. Wartezeit auf Events in process() */
     u32 worker_interval;              /*!< CO Thread Intervall */
     static QueueHandle_t nmt_event_queue; /*!< per <nmt_event()> eingetragene Queue */
-    bool terminal_registred;          /*!< Flag Terminalbefehl nicht mehrmals registrieren */
+    bool once;                        /*!< Flag Erststart */
 
     /*1010*/CO_SDO_abortCode_t store_parameters_callback(CO_ODF_arg_t *p_odf_arg);
     /*1011*/CO_SDO_abortCode_t restore_default_parameters_callback(CO_ODF_arg_t *p_odf_arg);
@@ -47,6 +47,7 @@ class Canopen: public Canopen_errors {
     /*2108*/CO_SDO_abortCode_t temperature_callback(CO_ODF_arg_t *p_odf_arg);
     /*2109*/CO_SDO_abortCode_t voltage_callback(CO_ODF_arg_t *p_odf_arg);
     /*2110*/CO_SDO_abortCode_t can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg);
+    /*2112*/CO_SDO_abortCode_t daisychain_callback(CO_ODF_arg_t *p_odf_arg);
 
     void od_set_defaults(void);
 
@@ -60,6 +61,7 @@ class Canopen: public Canopen_errors {
 
     void *get_od_pointer(u16 index, u8 subindex, size_t size);
 
+    void daisychain_event_callback(void);
     bool store_lss_config_callback(uint8_t nid, uint16_t bitRate);
 
     volatile bool timer_rx_suspend;
@@ -288,6 +290,7 @@ class Canopen: public Canopen_errors {
      * @{
      */
     static void timer_rx_thread_wrapper(void *p);
+    static void daisychain_event_callback_wrapper(void *p_object);
     static bool_t store_lss_config_callback_wrapper(void *p_object, uint8_t nid, uint16_t bit_rate);
     static CO_SDO_abortCode_t store_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t restore_default_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
@@ -296,6 +299,7 @@ class Canopen: public Canopen_errors {
     static CO_SDO_abortCode_t temperature_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t voltage_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t can_runtime_info_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
+    static CO_SDO_abortCode_t daisychain_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     /** @} */
 
 };

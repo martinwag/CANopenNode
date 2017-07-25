@@ -107,6 +107,7 @@
         #define CO_NO_HB_CONS   0
     #endif
     #define CO_NO_HB_PROD      1                                      /*  Producer Heartbeat Cont */
+    #define CO_NO_DAISY        1                                      /*  Daisy Chain */
 
     #define CO_RXCAN_NMT       0                                      /*  index for NMT message */
     #define CO_RXCAN_SYNC      1                                      /*  index for SYNC message */
@@ -125,9 +126,10 @@
     #define CO_TXCAN_SDO_SRV  (CO_TXCAN_TPDO+CO_NO_TPDO)              /*  start index for SDO server message (response) */
     #define CO_TXCAN_SDO_CLI  (CO_TXCAN_SDO_SRV+CO_NO_SDO_SERVER)     /*  start index for SDO client message (request) */
     #define CO_TXCAN_HB       (CO_TXCAN_SDO_CLI+CO_NO_SDO_CLIENT)     /*  index for Heartbeat message */
-    #define CO_TXCAN_LSS      (CO_TXCAN_HB+CO_NO_HB_PROD)             /*  index for LSS tx message */
+    #define CO_TXCAN_DAISY    (CO_TXCAN_HB+CO_NO_HB_PROD)             /*  index for Daisychain Event message */
+    #define CO_TXCAN_LSS      (CO_TXCAN_DAISY+CO_NO_DAISY)            /*  index for LSS tx message */
     /* total number of transmitted CAN messages */
-    #define CO_TXCAN_NO_MSGS (CO_NO_NMT_MASTER+CO_NO_SYNC+CO_NO_EMERGENCY+CO_NO_TPDO+CO_NO_SDO_SERVER+CO_NO_SDO_CLIENT+CO_NO_HB_PROD+CO_NO_LSS_SERVER+CO_NO_LSS_CLIENT)
+    #define CO_TXCAN_NO_MSGS (CO_NO_NMT_MASTER+CO_NO_SYNC+CO_NO_EMERGENCY+CO_NO_TPDO+CO_NO_SDO_SERVER+CO_NO_SDO_CLIENT+CO_NO_HB_PROD+CO_NO_LSS_SERVER+CO_NO_LSS_CLIENT+CO_NO_DAISY)
 
 
 #ifdef CO_USE_GLOBALS
@@ -200,6 +202,20 @@
     }
 #endif
 
+/* Helper function for Daisy Chain Event **************************************/
+static CO_CANtx_t *Daisy_txBuff = 0;
+
+uint8_t CO_sendDaisyEvent(CO_t *CO, uint8_t shiftCount, uint8_t nodeID)
+{
+    if(Daisy_txBuff == 0){
+        /* error, CO_CANtxBufferInit() was not called for this buffer. */
+        return CO_ERROR_TX_UNCONFIGURED; /* -11 */
+    }
+    Daisy_txBuff->data[0] = shiftCount;
+    Daisy_txBuff->data[1] = nodeID;
+
+    return CO_CANsend(CO->CANmodule[0], Daisy_txBuff); /* 0 = success */
+}
 
 #if CO_NO_TRACE > 0
 static uint32_t CO_traceBufferSize[CO_NO_TRACE];
@@ -519,6 +535,15 @@ CO_ReturnError_t CO_CANopenInit(
             2,                /* number of data bytes */
             0);               /* synchronous message flag bit */
 #endif
+
+    Daisy_txBuff = CO_CANtxBufferInit(
+            CO->CANmodule[0],
+            CO_TXCAN_DAISY,
+            CO_CAN_ID_DAISY,
+            0,
+            2,
+            0);
+
 #if CO_NO_LSS_CLIENT == 1
     err = CO_LSSmaster_init(
             CO->LSSmaster,
