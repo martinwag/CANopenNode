@@ -1018,6 +1018,9 @@ void Canopen::error_set(errorcode_t error, u32 detail)
   }
 
   switch (error) {
+    case ANALOG_INPUTS_DISABLED_WARNING:
+      co_emergency = CO_EMC401_AI_DISABLED;
+      break;
     case OUT_CUR_HIGH:
       co_emergency = CO_EMC401_OUT_CUR_HI;
       break;

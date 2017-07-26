@@ -35,7 +35,8 @@ class canopen_errors {
       START = CO_EM_MANUFACTURER_START,       //!< Erster verf"ugbarer Wert
 
       /* Standard DSP401 Codes */
-      OUT_CUR_HIGH = START,                   //!< Current at outputs too high (overload)
+      ANALOG_INPUTS_DISABLED_WARNING = START, //!< Warning: Analog inputs disabled
+      OUT_CUR_HIGH,                           //!< Current at outputs too high (overload)
       OUT_SHORTED,                            //!< Short circuit at outputs
       OUT_LOAD_DUMP,                          //!< Load dump at outputs
       IN_VOLT_HI,                             //!< Input voltage too high
