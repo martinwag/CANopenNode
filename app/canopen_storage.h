@@ -20,56 +20,144 @@
 #include "globdef.h"
 
 /**
- * Ablage der CO Parameter im EEPROM. Die Funktionalit"at k"onnten wir
- * erben, eine zweite Instanz der HW ist aber nicht m"oglich...
+ * Ablage eines CANopen Speicherbereichs
+ */
+class Canopen_storage_type {
+  protected:
+    /**
+     * Parametersatz laden. Falls das Laden fehlschl"agt, wird der Zieldaten-
+     * bereich nicht ver"andert.
+     *
+     * @param start Startadresse im EEPROM
+     * @param reserved F"ur diesen Bereich reservierter Speicher in Bytes
+     * @param size L"ange des Nutzdatenbereichs in Bytes
+     * @param p_work <reserved> Bytes f"ur tempor"are Daten. Mind. <size> + 4
+     * @param p_to <size> Bytes f"ur gelesene Daten
+     * @return CO_ERROR_NO wenn OK
+     */
+    CO_ReturnError_t load(u16 start, u16 reserved, u16 size, u8 *p_work, u8 *p_to);
+
+    /**
+     * Parametersatz speichern. Ein Schreibvorgang wird nur ausgel"ost wenn
+     * sich Daten ge"andert haben.
+     *
+     * @param start Startadresse im EEPROM
+     * @param reserved F"ur diesen Bereich reservierter Speicher in Bytes
+     * @param size L"ange des Nutzdatenbereichs in Bytes
+     * @param p_work <reserved> Bytes f"ur tempor"are Daten. Mind. <size> + 4
+     * @param p_from <size> Bytes f"ur gelesene Daten
+     * @return CO_ERROR_NO wenn OK
+     */
+    CO_ReturnError_t save(u16 start, u16 reserved, u16 size, u8 *p_work, const u8 *p_from);
+
+    /**
+     * Parametersatz ung"ultig setzen.
+     */
+    void erase(u16 start);
+};
+
+/**
+ * Ablage der CO Speicherbereiche im EEPROM
  *
  * wir orientieren uns an der Vorlage eeprom.c/h aus dem Stack Treiberbeispiel
  */
-class Canopen_storage {
+class Canopen_storage : Canopen_storage_type {
+  public:
+    typedef enum {
+      COMMUNICATION = 0,
+      PARAMS,
+      RUNTIME,
+      SERIAL,
+      TEST,
+      CALIB,
+
+      TYPE_COUNT
+    } storage_type_t;
+
   protected:
     static const u16 max_size = storage.canopen_size;
-    static const u16 od_reserved_size = 1024 * 2;
-    static const u16 od_actual_size = sizeof(struct sCO_OD_EEPROM);
-    static const u16 lss_reserved_size = 64;
-    static const u16 lss_actual_size = 3;
-    static const u16 test_reserved_size = 1024;
-    static const s16 remaining_size =
-        max_size - od_reserved_size - lss_reserved_size - test_reserved_size;
 
-    static const u16 od_start = storage.canopen_start;
-    static const u16 lss_start = od_start + od_reserved_size;
-    static const u16 test_start = lss_start + remaining_size;
-
-    /**
-     * Ablage CO_OD_EEPROM
+    /*
+     * F"ur die einzelnen Bereiche reservierter Speicher
      */
-    struct od {
-      u32 fw_id;                  // Eindeutige ID der Firmware
-      u8 data[od_actual_size];
-      u32 crc;                    // CRC "uber <data>
-    } od;
+    static constexpr u16 reserved_size[TYPE_COUNT] = {
+      /* com */     32,
+      /* params */  2048,
+      /* runtime */ 128,
+      /* serial */  32,
+      /* test */    256,
+      /* calib */   1024
+    };
 
-    /**
+    /*
+     * Von den einzelnen Bereichen tats"achlich belegter Speicher (ohne Verwaltungsinfos)
+     */
+    static constexpr u16 actual_size[TYPE_COUNT] = {
+      /* com */     sizeof(struct sCO_OD_COMMUNICATION),
+      /* params */  sizeof(struct sCO_OD_EEPROM),
+      /* runtime */ sizeof(struct sCO_OD_RUNTIME),
+      /* serial */  sizeof(struct sCO_OD_SERIAL),
+      /* test */    sizeof(struct sCO_OD_TEST),
+      /* calib */   sizeof(struct sCO_OD_CALIBRATION)
+    };
+
+    /*
+     * Zeiger auf Bereiche im RAM
+     */
+    static constexpr u8 *p_ram[TYPE_COUNT] = {
+        /* com */     reinterpret_cast<u8*>(&CO_OD_COMMUNICATION),
+        /* params */  reinterpret_cast<u8*>(&CO_OD_EEPROM),
+        /* runtime */ reinterpret_cast<u8*>(&CO_OD_RUNTIME),
+        /* serial */  reinterpret_cast<u8*>(&CO_OD_SERIAL),
+        /* test */    reinterpret_cast<u8*>(&CO_OD_TEST),
+        /* calib */   reinterpret_cast<u8*>(&CO_OD_CALIBRATION)
+    };
+
+    /*
+     * Nach Platzierung aller reservierten Speicherbereiche verbleibender Speicher
+     */
+    static const s32 remaining_size = max_size - reserved_size[COMMUNICATION] -
+        reserved_size[PARAMS] - reserved_size[RUNTIME] - reserved_size[SERIAL] -
+        reserved_size[TEST] - reserved_size[CALIB];
+
+    /*
+     * Anordnung im Speicher. Daten die "uber FW Update hinweg erhalten bleiben
+     * m"ussen von vorne beginnend, Rest von hinten beginnend.
+     */
+    static const u16 serial_start = storage.canopen_start;
+    static const u16 test_start = serial_start + reserved_size[SERIAL];
+    static const u16 calib_start = test_start + reserved_size[TEST];
+    static const u16 runtime_start = calib_start + reserved_size[CALIB];
+    static const u16 remaining_start = runtime_start + reserved_size[RUNTIME];
+    static const u16 com_start = remaining_start + remaining_size;
+    static const u16 params_start = com_start + reserved_size[COMMUNICATION];
+    /*
+     * Startadressen im Speicherbaustein
+     */
+    static constexpr u16 start[TYPE_COUNT] = {
+      /* com */     com_start,
+      /* params */  params_start,
+      /* runtime */ runtime_start,
+      /* serial */  serial_start,
+      /* test */    test_start,
+      /* calib */   calib_start
+    };
+
+    /*
      * Ablage der Default Daten erm"oglicht OD restore
      */
-    struct sCO_OD_EEPROM defaults;
+    u8 *p_restore[TYPE_COUNT];
 
-    /**
-     * Ablage LSS persistent values
-     */
-    struct lss {
-      u8 data[lss_actual_size];
-      u32 crc;                    // CRC "uber <data>
+    /* Puffer f"ur interne Verarbeitung */ //todo locking
+    union work {
+      struct sCO_OD_COMMUNICATION com;
+      struct sCO_OD_EEPROM params;
+      struct sCO_OD_RUNTIME runtime;
+      struct sCO_OD_SERIAL serial;
+      struct sCO_OD_TEST test;
+      struct sCO_OD_CALIBRATION calib;
     };
-
-    /**
-     * Ablage Testsystemdaten
-     */
-    struct test {
-      u16 size;                   // sizeof<data>
-      u32 crc;                    // CRC "uber <data>
-      /* u8 data[count] */
-    };
+    u8 work[sizeof(union work) + sizeof(u32)];
 
   public:
 
@@ -77,62 +165,30 @@ class Canopen_storage {
      * Parametersatz laden. Falls das Laden fehlschl"agt, wird die bestehende
      * Konfig nicht ver"andert.
      *
+     * @param type Zu bearbeitender Speicherbereich
+     * @param enable_restore Die Funktion restore() aktivieren
      * @return CO_ERROR_NO wenn OK
      */
-    CO_ReturnError_t load_od(void);
+    CO_ReturnError_t load(storage_type_t type, bool enable_restore);
 
     /**
      * Parametersatz speichern. Ein Schreibvorgang wird nur ausgel"ost wenn
      * sich Daten ge"andert haben.
      *
+     * @param type Zu bearbeitender Speicherbereich
      * @return CO_ERROR_NO wenn OK
      */
-    CO_ReturnError_t save_od(void);
+    CO_ReturnError_t save(storage_type_t type);
 
     /**
      * Parametersatz zur"ucksetzen. Dieses ver"andert die aktuell geladene
      * Konfiguration nicht (siehe CiA 301 Beschreibung Objekt 1011).
      *
-     * @return
-     */
-    void restore_od(void);
-
-    /**
-     * LSS persistent values laden
      *
-     * @param p_nid [out] Node ID
-     * @param p_bit [out] Bitrate
-     * @return CO_ERROR_NO wenn OK
-     */
-    CO_ReturnError_t load_lss(u8 *p_nid, u16 *p_bit);
-
-    /**
-     * LSS persistent values speichern
      *
-     * @param nid Node ID
-     * @param bit Bitrate
-     * @return CO_ERROR_NO wenn OK
+     * @param type Zu bearbeitender Speicherbereich
      */
-    CO_ReturnError_t save_lss(u8 nid, u16 bit);
-
-    /**
-     * Testsystemdaten laden
-     *
-     * @param p_data [out] Zieldatenbereich
-     * @param p_size [in] Anzahl zu lesender Bytes [out] anzahl gelesener Bytes
-     * @return CO_ERROR_NO wenn OK
-     */
-    CO_ReturnError_t load_test(u8 *p_data, u16 *p_size);
-
-    /**
-     * Testsystemdaten speichern
-     *
-     * @param p_data Quelldatenbereich
-     * @param size Anzahl zu schreibender Bytes
-     * @return CO_ERROR_NO wenn OK
-     */
-    CO_ReturnError_t save_test(const u8 *p_data, u16 size);
-
+    void restore(storage_type_t type);
 };
 
 #endif /* SRC_CANOPEN_CANOPEN_NVM_H_ */

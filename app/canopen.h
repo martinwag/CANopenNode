@@ -48,6 +48,7 @@ class Canopen: public Canopen_errors {
     /*2109*/CO_SDO_abortCode_t voltage_callback(CO_ODF_arg_t *p_odf_arg);
     /*2110*/CO_SDO_abortCode_t can_runtime_info_callback(CO_ODF_arg_t *p_odf_arg);
     /*2112*/CO_SDO_abortCode_t daisychain_callback(CO_ODF_arg_t *p_odf_arg);
+    /*5000*/CO_SDO_abortCode_t serial_number_callback(CO_ODF_arg_t *p_odf_arg);
 
     void od_set_defaults(void);
 
@@ -300,6 +301,7 @@ class Canopen: public Canopen_errors {
     static CO_SDO_abortCode_t voltage_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t can_runtime_info_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t daisychain_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
+    static CO_SDO_abortCode_t serial_number_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     /** @} */
 
 };
