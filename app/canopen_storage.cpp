@@ -14,221 +14,145 @@
 **/
 
 #include <cstddef>
+#include <algorithm>    // std::copy
 #include <string.h>
+#include <stdlib.h>
 
 #include "canopen_storage.h"
 #include "globdef.h"
 #include "checksum.h"
+#include "log.h"
+#include "errors.h"
 
-CO_ReturnError_t Canopen_storage::load_od(void)
+CO_ReturnError_t Canopen_storage_type::load(
+    u16 start, u16 reserved, u16 size, u8 *p_work, u8 *p_to)
 {
   u32 crc;
+  u32 crc_read;
 
-  /* Das sollte vom Compiler wegoptimiert werden da alles Konstanten sind */
-  if ((od_reserved_size < sizeof(od)) || (remaining_size < 0)) {
+  if (reserved < (size + sizeof(crc_read))) {
     return CO_ERROR_OUT_OF_MEMORY;
   }
 
-  if (defaults.FirstWord != CO_OD_FIRST_LAST_WORD) {
-    /* Bootup, Startwerte sichern um Restore zu erm"oglichen */
-    (void)memcpy(reinterpret_cast<void*>(&defaults),
-                 reinterpret_cast<void*>(&CO_OD_EEPROM),
-                 sizeof(defaults));
-  }
-  /* Startwerte wiederherstellen. Diese werden im weiteren Verlauf ggf.
-   * "uberschrieben */
-  (void)memcpy(reinterpret_cast<void*>(&CO_OD_EEPROM),
-               reinterpret_cast<void*>(&defaults),
-               sizeof(CO_OD_EEPROM));
+  /* Daten lesen. Der CRC ist an das Ende des Datenbereichs angeh"angt  */
+  (void)storage.read(start, size + sizeof(crc_read), p_work);
 
-  /* Daten lesen */
-  (void)storage.read(od_start, sizeof(od), reinterpret_cast<u8*>(&od));
-
-  if (od.fw_id != globals.get_app_checksum()) {
-    /* Daten von anderer FW Version oder Erststart */
-    return CO_ERROR_NO;
-  }
-
-  crc = checksum_calculate_crc32(od.data, od_actual_size,
+  crc = checksum_calculate_crc32(p_work, size,
                                  CHECKSUM_CRC32_START_0xFFFFFFFF,
                                  CHECKSUM_CRC32_POLYNOM_ISO3309);
-  if (crc != od.crc) {
-    restore_od();
+  crc_read = *reinterpret_cast<u32*>(p_work + size);
+  if (crc != crc_read) {
     return CO_ERROR_CRC;
   }
-  (void)memcpy(reinterpret_cast<void*>(&CO_OD_EEPROM),
-               reinterpret_cast<void*>(od.data), sizeof(CO_OD_EEPROM));
+  /* Daten sind g"ultig, in Ausgabepuffer "ubernehmen */
+  (void)memcpy(reinterpret_cast<void*>(p_to),
+               reinterpret_cast<void*>(p_work), size);
   return CO_ERROR_NO;
 }
 
-CO_ReturnError_t Canopen_storage::save_od(void)
+CO_ReturnError_t Canopen_storage_type::save(
+    u16 start, u16 reserved, u16 size, u8 *p_work, const u8 *p_from)
 {
-  u32 crc;
-  u32 fw_id;
+  u32 crc_write;
+  u32 crc_read;
   nvmem_state_t state;
 
-  /* Neuen Datenblock generieren */
-  od.fw_id = globals.get_app_checksum();
-  (void)memcpy(reinterpret_cast<void*>(od.data),
-               reinterpret_cast<void*>(&CO_OD_EEPROM), sizeof(od.data));
-  od.crc = checksum_calculate_crc32(od.data, sizeof(od.data),
-                                    CHECKSUM_CRC32_START_0xFFFFFFFF,
-                                    CHECKSUM_CRC32_POLYNOM_ISO3309);
+  if (reserved < (size + sizeof(crc_write))) {
+    return CO_ERROR_OUT_OF_MEMORY;
+  }
+
+  crc_write = checksum_calculate_crc32(p_from, size,
+                                       CHECKSUM_CRC32_START_0xFFFFFFFF,
+                                       CHECKSUM_CRC32_POLYNOM_ISO3309);
 
   /* M"ussen wir einen Schreibvorgang ausl"osen? */
-  (void)storage.read(od_start + 0, sizeof(fw_id), reinterpret_cast<u8*>(&fw_id));
-  (void)storage.read(od_start + offsetof(struct od, crc),
-                     sizeof(crc), reinterpret_cast<u8*>(&crc));
-  if ((od.fw_id == fw_id) && (od.crc == crc)) {
+  (void)storage.read(start + size, sizeof(crc_read),
+                     reinterpret_cast<u8*>(&crc_read));
+  if (crc_read == crc_write) {
     return CO_ERROR_NO;
   }
 
   /* Wir schreiben immer den gesamten Block. Der CRC ist am Ende des Datenblocks
    * und schaltet die Daten g"ultig. */
-  state = storage.write(od_start, sizeof(od), reinterpret_cast<u8*>(&od));
+  (void)memcpy(reinterpret_cast<void*>(p_work),
+               reinterpret_cast<const void*>(p_from), size);
+  (void)memcpy(reinterpret_cast<void*>(p_work + size),
+               reinterpret_cast<const void*>(&crc_write), sizeof(crc_write));
+  state = storage.write(start, size + sizeof(crc_write), p_work);
   if (state != NVMEM_OK) {
     return CO_ERROR_DATA_CORRUPT;
   }
   return CO_ERROR_NO;
 }
 
-void Canopen_storage::restore_od(void)
+void Canopen_storage_type::erase(u16 start)
 {
   const u32 dummy = 0;
 
-  /* Wir "uberschreiben die Kennung, dieses triggert das beim n"achsten Reset
-   * die alte Konfig nicht geladen wird. */
-  (void)storage.write(od_start, sizeof(dummy), reinterpret_cast<const u8*>(&dummy));
+  /* Wir "uberschreiben die Kennung, dieses triggert beim n"achsten Start einen
+   * CRC Fehler */
+  (void)storage.write(start, sizeof(dummy), reinterpret_cast<const u8*>(&dummy));
 }
 
-CO_ReturnError_t Canopen_storage::load_lss(u8 *p_nid, u16 *p_bit)
+CO_ReturnError_t Canopen_storage::load(storage_type_t type, bool enable_restore)
 {
-  u32 crc;
-  struct lss lss;
-
-  /* Das sollte vom Compiler wegoptimiert werden da alles Konstanten sind */
-  if ((lss_reserved_size < sizeof(lss)) || (remaining_size < 0)) {
+  if (this->remaining_size < 0) {
     return CO_ERROR_OUT_OF_MEMORY;
   }
 
-  /* Daten lesen */
-  (void)storage.read(lss_start, sizeof(lss), reinterpret_cast<u8*>(&lss));
+  if (enable_restore == true) {
+    if (this->p_restore[type] != NULL) {
+      /* Daten k"onnen nur bei der ersten Initialisierung gesichert werden! */
+      return CO_ERROR_ILLEGAL_ARGUMENT;
+    }
 
-  crc = checksum_calculate_crc32(lss.data, lss_actual_size,
-                                 CHECKSUM_CRC32_START_0xFFFFFFFF,
-                                 CHECKSUM_CRC32_POLYNOM_ISO3309);
-  if (crc != lss.crc) {
-    *p_nid = 0;
-    *p_bit = 0;
-    return CO_ERROR_CRC;
+    this->p_restore[type] = reinterpret_cast<u8*>(malloc(actual_size[type]));
+    if (this->p_restore[type] == NULL) {
+      log_printf(LOG_ERR, NO_MEMORY_AVAILABLE);
+      return CO_ERROR_OUT_OF_MEMORY;
+    }
+    /* Bootup, Startwerte sichern um Restore zu erm"oglichen */
+    (void)memcpy(reinterpret_cast<void*>(this->p_restore[type]),
+                 reinterpret_cast<const void*>(this->p_ram[type]),
+                 actual_size[type]);
   }
-  *p_nid = lss.data[0];
-  *p_bit = lss.data[1] << 8 | lss.data[2];
 
-  return CO_ERROR_NO;
+  if (this->p_restore[type] != NULL) {
+    /* Startwerte wiederherstellen. Diese werden im weiteren Verlauf ggf.
+     * "uberschrieben */
+    (void)memcpy(reinterpret_cast<void*>(this->p_ram[type]),
+                 reinterpret_cast<const void*>(this->p_restore[type]),
+                 actual_size[type]);
+  }
+
+  /* Daten lesen. Sind diese korrekt, so werden die aktuellen Werte
+   * "uberschrieben */
+  return Canopen_storage_type::load(this->start[type], this->reserved_size[type],
+                                    this->actual_size[type], this->work,
+                                    this->p_ram[type]);
 }
 
-CO_ReturnError_t Canopen_storage::save_lss(u8 nid, u16 bit)
+CO_ReturnError_t Canopen_storage::save(storage_type_t type)
 {
-  u32 crc;
-  struct lss lss;
-  nvmem_state_t state;
-
-  /* Neuen Datenblock generieren */
-  lss.data[0] = nid;
-  lss.data[1] = (u8)(bit >> 8);
-  lss.data[2] = (u8)(bit);
-  lss.crc = checksum_calculate_crc32(lss.data, sizeof(lss.data),
-                                     CHECKSUM_CRC32_START_0xFFFFFFFF,
-                                     CHECKSUM_CRC32_POLYNOM_ISO3309);
-
-  /* M"ussen wir einen Schreibvorgang ausl"osen? */
-  (void)storage.read(lss_start + offsetof(struct lss, crc),
-                     sizeof(crc), reinterpret_cast<u8*>(&crc));
-  if (lss.crc == crc) {
-    return CO_ERROR_NO;
-  }
-
-  /* Wir schreiben immer den gesamten Block. Der CRC ist am Ende des Datenblocks
-   * und schaltet die Daten g"ultig. */
-  state = storage.write(lss_start, sizeof(lss), reinterpret_cast<u8*>(&lss));
-  if (state != NVMEM_OK) {
-    return CO_ERROR_DATA_CORRUPT;
-  }
-  return CO_ERROR_NO;
-}
-
-CO_ReturnError_t Canopen_storage::load_test(u8 *p_data, u16 *p_size)
-{
-  u32 crc;
-  struct test test;
-
-  if ((test_reserved_size < (sizeof(test) + *p_size)) || (remaining_size < 0)) {
+  if (this->remaining_size < 0) {
     return CO_ERROR_OUT_OF_MEMORY;
   }
 
-  /* Header lesen */
-  (void)storage.read(test_start, sizeof(test), reinterpret_cast<u8*>(&test));
-  /* "size" ist nicht per CRC gesichert -> Plausibilit"atstest */
-  if (test.size > test_reserved_size) {
-    return CO_ERROR_CRC;
-  }
-
-  /* wir lesen den kleineren der beiden Bereiche */
-  if (*p_size > test.size) {
-    *p_size = test.size;
-  }
-  test.size = *p_size;
-
-  (void)storage.read(test_start + sizeof(test.size), test.size, p_data);
-  crc = checksum_calculate_crc32(p_data, test.size,
-                                 CHECKSUM_CRC32_START_0xFFFFFFFF,
-                                 CHECKSUM_CRC32_POLYNOM_ISO3309);
-  if (crc != test.crc) {
-    *p_size = 0;
-    return CO_ERROR_CRC;
-  }
-
-  return CO_ERROR_NO;
+  return Canopen_storage_type::save(this->start[type], this->reserved_size[type],
+                                    this->actual_size[type], this->work,
+                                    this->p_ram[type]);
 }
 
-CO_ReturnError_t Canopen_storage::save_test(const u8 *p_data, u16 size)
+void Canopen_storage::restore(storage_type_t type)
 {
-  u32 crc;
-  struct test test;
-  nvmem_state_t state;
-
-  if ((test_reserved_size < (sizeof(test) + size)) || (remaining_size < 0)) {
-    return CO_ERROR_OUT_OF_MEMORY;
+  if (this->remaining_size < 0) {
+    return;
   }
 
-  /* Neuen Datenblock generieren */
-  test.size = size;
-  test.crc = checksum_calculate_crc32(p_data, test.size,
-                                      CHECKSUM_CRC32_START_0xFFFFFFFF,
-                                      CHECKSUM_CRC32_POLYNOM_ISO3309);
-
-  /* M"ussen wir einen Schreibvorgang ausl"osen? */
-  (void)storage.read(test_start + offsetof(struct test, crc),
-                     sizeof(crc), reinterpret_cast<u8*>(&crc));
-  if (test.crc == crc) {
-    return CO_ERROR_NO;
-  }
-
-  /* Wir schreiben immer den gesamten Block. Der CRC wird zuletzt geschrieben
-   * und schaltet die Daten g"ultig. */
-  state = storage.write(test_start + sizeof(test), test.size,
-                        reinterpret_cast<u8*>(&test));
-  if (state != NVMEM_OK) {
-    return CO_ERROR_DATA_CORRUPT;
-  }
-  state = storage.write(test_start, sizeof(test), reinterpret_cast<u8*>(&test));
-  if (state != NVMEM_OK) {
-    return CO_ERROR_DATA_CORRUPT;
-  }
-  return CO_ERROR_NO;
+  Canopen_storage_type::erase(this->start[type]);
+  /* Der eigentliche Restore wird erst beim n"achsten NMT reset comm/app
+   * durchgef"uhrt */
 }
-
 
 /**
 * @} @}

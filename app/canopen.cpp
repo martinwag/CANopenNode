@@ -123,6 +123,7 @@ QueueHandle_t Canopen::nmt_event_queue;
 CO_SDO_abortCode_t Canopen::store_parameters_callback(CO_ODF_arg_t *p_odf_arg)
 {
   CO_ReturnError_t result;
+  Canopen_storage::storage_type_t type;
   u32 signature;
   u32 *p_data;
 
@@ -137,19 +138,59 @@ CO_SDO_abortCode_t Canopen::store_parameters_callback(CO_ODF_arg_t *p_odf_arg)
   *p_data = *(reinterpret_cast<const u32*>(p_odf_arg->ODdataStorage));
 
   switch (p_odf_arg->subIndex) {
+    case OD_1010_2_storeParameters_saveCommunicationRelatedParameters:
+    case OD_1010_4_storeParameters_saveRuntime:
+      /* Speichern nicht zul"assig */
+      return CO_SDO_AB_DATA_TRANSF;
+    default:
+      break;
+  }
+
+  if (signature != 0x65766173) {
+    /* keine Signatur "save" */
+    return CO_SDO_AB_DATA_TRANSF;
+  }
+
+  switch (p_odf_arg->subIndex) {
     case OD_1010_1_storeParameters_saveAllParameters:
-      if (signature != 0x65766173) {
-        /* keine Signatur "save" */
-        return CO_SDO_AB_DATA_TRANSF;
-      }
-      result = storage.save_od();
+      result = storage.save(Canopen_storage::PARAMS);
       if (result != CO_ERROR_NO)  {
         return CO_SDO_AB_HW;
       }
+      result = storage.save(Canopen_storage::TEST);
+      if (result != CO_ERROR_NO)  {
+        return CO_SDO_AB_HW;
+      }
+      result = storage.save(Canopen_storage::CALIB);
+      if (result != CO_ERROR_NO)  {
+        return CO_SDO_AB_HW;
+      }
+      return CO_SDO_AB_NONE;
 
+    case OD_1010_3_storeParameters_saveApplicationRelatedParameters:
+      type = Canopen_storage::PARAMS;
+      break;
+    case OD_1010_5_storeParameters_saveSerialNumber:
+      if (OD_serialNumber.valid != false) {
+        /* Seriennummer kann nur im ung"ultigen Zustand gesetzt werden */
+        return CO_SDO_AB_DATA_TRANSF;
+      }
+      OD_serialNumber.valid = true;
+      type = Canopen_storage::SERIAL;
+      break;
+    case OD_1010_6_storeParameters_saveTestData:
+      type = Canopen_storage::TEST;
+      break;
+    case OD_1010_7_storeParameters_saveCalibrationData:
+      type = Canopen_storage::CALIB;
       break;
     default:
       return CO_SDO_AB_SUB_UNKNOWN;
+  }
+
+  result = storage.save(type);
+  if (result != CO_ERROR_NO)  {
+    return CO_SDO_AB_HW;
   }
 
   return CO_SDO_AB_NONE;
@@ -180,12 +221,21 @@ CO_SDO_abortCode_t Canopen::restore_default_parameters_callback(CO_ODF_arg_t *p_
 
   switch (p_odf_arg->subIndex) {
     case OD_1011_1_restoreDefaultParameters_restoreAllDefaultParameters:
+    case OD_1011_3_restoreDefaultParameters_restoreApplicationRelatedParameters:
+      /* Nur die App Parameter unterst"utzen den Load */
       if (signature != 0x64616F6C) {
         /* keine Signatur "load" */
         return CO_SDO_AB_DATA_TRANSF;
       }
-      storage.restore_od();
+      storage.restore(Canopen_storage::PARAMS);
       break;
+    case OD_1011_2_restoreDefaultParameters_restoreCommunicationRelatedParameters:
+    case OD_1011_4_restoreDefaultParameters_restoreRuntime:
+    case OD_1011_5_restoreDefaultParameters_restoreSerialNumber:
+    case OD_1011_6_restoreDefaultParameters_restoreTestData:
+    case OD_1011_7_restoreDefaultParameters_restoreCalibrationData:
+      /* Laden nicht zul"assig */
+      return CO_SDO_AB_DATA_TRANSF;
     default:
       return CO_SDO_AB_SUB_UNKNOWN;
   }
@@ -500,6 +550,8 @@ CO_SDO_abortCode_t Canopen::daisychain_callback(CO_ODF_arg_t *p_odf_arg)
         *p_odf_arg->data = FALSE;
       }
       break;
+    default:
+      return CO_SDO_AB_SUB_UNKNOWN;
   }
 
   return CO_SDO_AB_NONE;
@@ -509,13 +561,35 @@ CO_SDO_abortCode_t Canopen::daisychain_callback(CO_ODF_arg_t *p_odf_arg)
  * Auf diese Eintr"age wird direkt aus den FBs zugegriffen
  */
 
-/* 4000 - Calibration:
- * todo
+/* 5000 - Test system:
+ *
  */
 
-/* 5000 - Test system:
- * todo
+/** 5000 - Serial number
+ *
+ * @param p_odf_arg OD Eintrag
+ * @return CO_SDO_AB_NONE wenn erfolgreich
  */
+CO_SDO_abortCode_t Canopen::serial_number_callback(CO_ODF_arg_t *p_odf_arg)
+{
+  if (p_odf_arg->reading == true) {
+    return CO_SDO_AB_NONE;
+  }
+
+  switch (p_odf_arg->subIndex) {
+    case OD_5000_2_serialNumber_serial:
+      if (OD_serialNumber.valid == true) {
+        /* Schreibzugriff nicht mehr zulassen. Empfangenen Wert mit vorherigem ersetzen */
+        (void)memcpy(p_odf_arg->data, p_odf_arg->ODdataStorage, p_odf_arg->dataLength);
+        return CO_SDO_AB_READONLY;
+      }
+      break;
+    default:
+      return CO_SDO_AB_SUB_UNKNOWN;
+  }
+  return CO_SDO_AB_NONE;
+}
+
 
 /** @}*/
 /** @defgroup Device Profile
@@ -713,7 +787,12 @@ bool Canopen::store_lss_config_callback(uint8_t nid, uint16_t bit_rate)
 {
   CO_ReturnError_t result;
 
-  result = storage.save_lss(nid, bit_rate);
+  CO_LOCK_OD();
+  OD_CANNodeID = nid;
+  //OD_CANBitRate = bit_rate; nicht unterst"utzt
+  CO_UNLOCK_OD();
+
+  result = storage.save(Canopen_storage::COMMUNICATION);
   if (result == CO_ERROR_NO) {
     return true;
   }
@@ -1119,15 +1198,41 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
   *this->p_active_nid = CO_LSS_NODE_ID_ASSIGNMENT;
 
   /* NVM Werte laden */
-  co_result = storage.load_od();
+  co_result = storage.load(Canopen_storage::PARAMS, !this->once);
   if (co_result != CO_ERROR_NO) {
     log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
     /* Wir laufen mit den Defaultwerten los */
   }
 
+  co_result = storage.load(Canopen_storage::RUNTIME, false);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
+  }
+  if (this->once != true) {
+    OD_powerOnCounter ++;
+    storage.save(Canopen_storage::RUNTIME);
+  }
+
+  co_result = storage.load(Canopen_storage::SERIAL, false);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
+  }
+
+  co_result = storage.load(Canopen_storage::TEST, false);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
+  }
+
+  co_result = storage.load(Canopen_storage::CALIB, false);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
+  }
+
   /* Abh. vom Aufrufparameter wird die Persistent NID vom NVM geladen */
   if (nid == 0) {
-    co_result = storage.load_lss(&persistent_nid, &dummy);
+    co_result = storage.load(Canopen_storage::COMMUNICATION, false);
+    persistent_nid = OD_CANNodeID;
+    //todo sch"on, todo bitrate
     if ((co_result != CO_ERROR_NO) || ! CO_LSS_NODE_ID_VALID(persistent_nid)) {
       /* NVM nicht initialisiert oder fehlerhaft */
       log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
@@ -1165,7 +1270,6 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
   if (this->once != true) {
     (void)FreeRTOS_CLIRegisterCommand(&terminal);
     (void)daisy_init(MODTYPE_HW_TEMPLATE, daisychain_event_callback_wrapper, this);
-    this->once = true;
   }
 
   /* Get Node ID */
@@ -1208,6 +1312,7 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
   set_callback(OD_2109_voltage, voltage_callback_wrapper);
   set_callback(OD_2110_canRuntimeInfo, can_runtime_info_callback_wrapper);
   set_callback(OD_2112_daisyChain, daisychain_callback_wrapper);
+  set_callback(OD_5000_serialNumber, serial_number_callback_wrapper);
 
   /* Configure Timer function for execution every <interval> millisecond */
   CANrx_threadTmr_init(this->worker_interval);
@@ -1225,18 +1330,9 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
     }
   }
 
+  this->once = true;
+
   return CO_ERROR_NO;
-}
-
-void Canopen::set_nid(u8 nid)
-{
-  u8 persistent_nid;
-  u16 persistent_bit;
-
-  if ((nid > 0) && (nid <= 127)) {
-    (void)storage.load_lss(&persistent_nid, &persistent_bit);
-    (void)storage.save_lss(nid, persistent_bit);
-  }
 }
 
 void Canopen::deinit(void)
@@ -1296,7 +1392,7 @@ void Canopen::process(void)
 #ifndef UNIT_TEST
 
 /*
- * Auswahl Adresse und Baudrate
+ * CANopen per CLI steuern
  */
 BaseType_t Canopen::cmd_terminal( char *pcWriteBuffer,
                                   size_t xWriteBufferLen,
@@ -1326,18 +1422,27 @@ BaseType_t Canopen::cmd_terminal( char *pcWriteBuffer,
   switch (opt) {
     case 'a':
       /* nach Muster -a 22
-       * Quick & dirty ohne Locking des NVM Schreibzugriffs */
-      (void)storage.save_lss(tmp, this->active_bit);
-      globals.request_reboot(); //triggert LSS NVM restore
+       * Quick & dirty den Callback aufrufen den auch LSS verwendet */
+      store_lss_config_callback(tmp, this->active_bit);
+      globals.request_reboot(); //triggert Comm Params restore
       break;
     case 'b':
       /* nach Muster -b <can_baud_t>. 1 MBit = 0
        * Quick & dirty direkt in den Treiber, nicht speichernd */
       state = can_ioctl(CO->CANmodule[0]->driver, CAN_SET_BAUDRATE,
                         reinterpret_cast<void*>(&tmp));
+      //todo CO OD variable "andern
       if (state != CAN_OK) {
         (void)snprintf(pcWriteBuffer, xWriteBufferLen, "Failed: %d" NEWLINE, state);
       }
+      break;
+    case 'c':
+      if (tmp != 'c') { //int 99
+        break;
+      }
+      /* nicht in Terminal Help, Seriennummer l"oschen */
+      OD_serialNumber.valid = false;
+      (void)storage.save(Canopen_storage::SERIAL);
       break;
     default:
       (void)snprintf(pcWriteBuffer, xWriteBufferLen, terminal_text_unknown_option, opt);
@@ -1404,6 +1509,11 @@ CO_SDO_abortCode_t Canopen::can_runtime_info_callback_wrapper(CO_ODF_arg_t *p_od
 CO_SDO_abortCode_t Canopen::daisychain_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
   return reinterpret_cast<Canopen*>(p_odf_arg->object)->daisychain_callback(p_odf_arg);
+}
+
+CO_SDO_abortCode_t Canopen::serial_number_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+{
+  return reinterpret_cast<Canopen*>(p_odf_arg->object)->serial_number_callback(p_odf_arg);
 }
 
 /**
