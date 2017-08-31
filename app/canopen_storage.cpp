@@ -14,7 +14,6 @@
 **/
 
 #include <cstddef>
-#include <algorithm>    // std::copy
 #include <string.h>
 #include <stdlib.h>
 
@@ -85,62 +84,78 @@ CO_ReturnError_t Canopen_storage_type::save(
   return CO_ERROR_NO;
 }
 
-void Canopen_storage_type::erase(u16 start)
+void Canopen_storage_type::erase(u16 start, u16 size)
 {
-  const u32 dummy = 0;
+  u8 tmp[16];
+  u16 remaining;
 
-  /* Wir "uberschreiben die Kennung, dieses triggert beim n"achsten Start einen
-   * CRC Fehler */
-  (void)storage.write(start, sizeof(dummy), reinterpret_cast<const u8*>(&dummy));
+  (void)memset(reinterpret_cast<void*>(tmp), 0xff, sizeof(tmp));
+
+  remaining = size;
+  do {
+    if (remaining >= sizeof(tmp)) {
+      size = sizeof(tmp);
+    } else {
+      size = remaining;
+    }
+
+    (void)storage.write(start, size, tmp);
+
+    remaining = remaining - size;
+  } while (remaining > 0);
 }
 
-CO_ReturnError_t Canopen_storage::load(storage_type_t type, bool enable_restore)
+void Canopen_storage::lock(void)
 {
+  if (this->in_use == NULL) {
+    this->in_use = xSemaphoreCreateMutex();
+  }
+  (void)xSemaphoreTake(this->in_use, portMAX_DELAY);
+}
+
+void Canopen_storage::unlock(void)
+{
+  (void)xSemaphoreGive(this->in_use);
+}
+
+CO_ReturnError_t Canopen_storage::load(storage_type_t type)
+{
+  CO_ReturnError_t result;
+
   if (this->remaining_size < 0) {
     return CO_ERROR_OUT_OF_MEMORY;
   }
 
-  if (enable_restore == true) {
-    if (this->p_restore[type] != NULL) {
-      /* Daten k"onnen nur bei der ersten Initialisierung gesichert werden! */
-      return CO_ERROR_ILLEGAL_ARGUMENT;
-    }
-
-    this->p_restore[type] = reinterpret_cast<u8*>(malloc(actual_size[type]));
-    if (this->p_restore[type] == NULL) {
-      log_printf(LOG_ERR, NO_MEMORY_AVAILABLE);
-      return CO_ERROR_OUT_OF_MEMORY;
-    }
-    /* Bootup, Startwerte sichern um Restore zu erm"oglichen */
-    (void)memcpy(reinterpret_cast<void*>(this->p_restore[type]),
-                 reinterpret_cast<const void*>(this->p_ram[type]),
-                 actual_size[type]);
-  }
-
-  if (this->p_restore[type] != NULL) {
-    /* Startwerte wiederherstellen. Diese werden im weiteren Verlauf ggf.
-     * "uberschrieben */
-    (void)memcpy(reinterpret_cast<void*>(this->p_ram[type]),
-                 reinterpret_cast<const void*>(this->p_restore[type]),
-                 actual_size[type]);
-  }
+  lock();
 
   /* Daten lesen. Sind diese korrekt, so werden die aktuellen Werte
    * "uberschrieben */
-  return Canopen_storage_type::load(this->start[type], this->reserved_size[type],
-                                    this->actual_size[type], this->work,
-                                    this->p_ram[type]);
+  result = Canopen_storage_type::load(this->start[type], this->reserved_size[type],
+                                      this->actual_size[type], this->work,
+                                      this->p_ram[type]);
+
+  unlock();
+
+  return result;
 }
 
 CO_ReturnError_t Canopen_storage::save(storage_type_t type)
 {
+  CO_ReturnError_t result;
+
   if (this->remaining_size < 0) {
     return CO_ERROR_OUT_OF_MEMORY;
   }
 
-  return Canopen_storage_type::save(this->start[type], this->reserved_size[type],
-                                    this->actual_size[type], this->work,
-                                    this->p_ram[type]);
+  lock();
+
+  result =  Canopen_storage_type::save(this->start[type], this->reserved_size[type],
+                                       this->actual_size[type], this->work,
+                                       this->p_ram[type]);
+
+  unlock();
+
+  return result;
 }
 
 void Canopen_storage::restore(storage_type_t type)
@@ -149,9 +164,13 @@ void Canopen_storage::restore(storage_type_t type)
     return;
   }
 
-  Canopen_storage_type::erase(this->start[type]);
+  lock();
+
+  Canopen_storage_type::erase(this->start[type], this->reserved_size[type]);
   /* Der eigentliche Restore wird erst beim n"achsten NMT reset comm/app
    * durchgef"uhrt */
+
+  unlock();
 }
 
 /**

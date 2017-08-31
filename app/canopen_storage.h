@@ -19,6 +19,9 @@
 
 #include "globdef.h"
 
+#include "FreeRTOS.h"
+#include "queue.h"
+
 /**
  * Ablage eines CANopen Speicherbereichs
  */
@@ -51,9 +54,12 @@ class Canopen_storage_type {
     CO_ReturnError_t save(u16 start, u16 reserved, u16 size, u8 *p_work, const u8 *p_from);
 
     /**
-     * Parametersatz ung"ultig setzen.
+     * Speicher l"oschen.
+     *
+     * @param start Startadresse im EEPROM
+     * @param size L"ange des Datenbereichs in Bytes
      */
-    void erase(u16 start);
+    void erase(u16 start, u16 size);
 };
 
 /**
@@ -143,12 +149,7 @@ class Canopen_storage : Canopen_storage_type {
       /* calib */   calib_start
     };
 
-    /*
-     * Ablage der Default Daten erm"oglicht OD restore
-     */
-    u8 *p_restore[TYPE_COUNT];
-
-    /* Puffer f"ur interne Verarbeitung */ //todo locking
+    /* Puffer f"ur interne Verarbeitung */
     union work {
       struct sCO_OD_COMMUNICATION com;
       struct sCO_OD_EEPROM params;
@@ -158,6 +159,9 @@ class Canopen_storage : Canopen_storage_type {
       struct sCO_OD_CALIBRATION calib;
     };
     u8 work[sizeof(union work) + sizeof(u32)];
+    QueueHandle_t in_use = NULL;
+    void lock(void);
+    void unlock(void);
 
   public:
 
@@ -166,10 +170,9 @@ class Canopen_storage : Canopen_storage_type {
      * Konfig nicht ver"andert.
      *
      * @param type Zu bearbeitender Speicherbereich
-     * @param enable_restore Die Funktion restore() aktivieren
      * @return CO_ERROR_NO wenn OK
      */
-    CO_ReturnError_t load(storage_type_t type, bool enable_restore);
+    CO_ReturnError_t load(storage_type_t type);
 
     /**
      * Parametersatz speichern. Ein Schreibvorgang wird nur ausgel"ost wenn

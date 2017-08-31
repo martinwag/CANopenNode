@@ -612,67 +612,6 @@ CO_SDO_abortCode_t Canopen::serial_number_callback(CO_ODF_arg_t *p_odf_arg)
  */
 
 /**
- * Einige Werte im OD werden zur Compile Time / Startup Time generiert. Diese
- * werden hier eingetragen.
- *
- * Diese Funktion darf nur vor dem Initialisieren des CO Stacks aufgerufen werden!
- */
-void Canopen::od_set_defaults(void)
-{
-  const char *p_version;
-  u32 id;
-  u16 mod_type;
-  u8 hw_rev;
-  u8 main;
-  u8 minor;
-  u8 bugfix;
-  u8 build;
-
-  /* 100a - Manufacturer software version anhand dem in Git vorhandenen Versionsstring */
-  p_version = globals.get_app_version_string();
-  (void)snprintf(OD_manufacturerSoftwareVersion,
-                 ODL_manufacturerSoftwareVersion_stringLength,
-                 p_version);
-
-  /* 1018-2 - Set Hardware Infos
-   *
-   * Diese Funktion "uberschreibt den Default aus dem OD Editor. Somit ist die
-   * tats"achliche Hardwaretype lesbar.
-   */
-  mod_type = globals.get_type();
-  hw_rev = globals.get_hw_rev();
-  OD_identity.productCode = hw_rev << 16 | mod_type;
-
-  /* 1018-3 - Set Firmwareversion anhand der in Git vorhandenen Versionsnummern */
-  globals.get_app_version(&main, &minor, &bugfix, &build);
-  OD_identity.revisionNumber = (u32)(main << 24 | minor << 16 | bugfix << 8 | build);
-
-  /* 1018-4 Serial number
-   *
-   * Wir verwenden die Prozessor UID, nicht die Neuberger Seriennummer
-   */
-  id = system_get_uid32();
-  OD_identity.serialNumber = id;
-
-  /* 1f56 - Set Program Software Identification */
-  id = globals.get_app_checksum();
-  OD_programSoftwareIdentification[0] = id;
-
-  /* 2102 - CANopen Node ID */
-  OD_CANNodeID = 0;
-
-  /* 2102 - CAN bit rate */
-  OD_CANBitRate = this->active_bit;
-
-  /* 2111 - 96 Bit UID */
-  system_get_uid96(&OD_UID[ODA_UID_word0], &OD_UID[ODA_UID_word1],
-                   &OD_UID[ODA_UID_word2]);
-
-  /* 2112 - Daisy Chain */
-  OD_daisyChain.shiftIn = 0;
-}
-
-/**
  * Schreibt bei NMT Zustands"anderung ein Event auf die per
  * <nmt_event()> vorgegebene Queue
  *
@@ -785,17 +724,28 @@ void Canopen::daisychain_event_callback(void)
  */
 bool Canopen::store_lss_config_callback(uint8_t nid, uint16_t bit_rate)
 {
+  u8 active_nid;
   CO_ReturnError_t result;
 
+  /* F"urs Speichern der NID m"ussen wir einen Quertausch machen:
+   * - aktive NID sichern
+   * - zu speichernde NID eintragen, speichern
+   * - aktive NID wieder eintragen
+   */
   CO_LOCK_OD();
+  active_nid = OD_CANNodeID;
   OD_CANNodeID = nid;
-  //OD_CANBitRate = bit_rate; nicht unterst"utzt
   CO_UNLOCK_OD();
 
   result = storage.save(Canopen_storage::COMMUNICATION);
   if (result == CO_ERROR_NO) {
     return true;
   }
+
+  CO_LOCK_OD();
+  OD_CANNodeID = active_nid;
+  CO_UNLOCK_OD();
+
   return false;
 }
 
@@ -1182,66 +1132,147 @@ void Canopen::nmt_event(QueueHandle_t event_queue)
 
 /** @}*/
 
-CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
+
+/**
+ * Einige Werte im OD werden zur Compile Time / Startup Time generiert. Diese
+ * werden hier eingetragen.
+ *
+ * Diese Funktion darf nur vor dem Initialisieren des CO Stacks aufgerufen werden!
+ */
+void Canopen::od_set_defaults(void)
+{
+  const char *p_version;
+  u32 id;
+  u16 mod_type;
+  u8 hw_rev;
+  u8 main;
+  u8 minor;
+  u8 bugfix;
+  u8 build;
+
+  /* 100a - Manufacturer software version anhand dem in Git vorhandenen Versionsstring */
+  p_version = globals.get_app_version_string();
+  (void)snprintf(OD_manufacturerSoftwareVersion,
+                 ODL_manufacturerSoftwareVersion_stringLength,
+                 p_version);
+
+  /* 1018-2 - Set Hardware Infos
+   *
+   * Diese Funktion "uberschreibt den Default aus dem OD Editor. Somit ist die
+   * tats"achliche Hardwaretype lesbar.
+   */
+  mod_type = globals.get_type();
+  hw_rev = globals.get_hw_rev();
+  OD_identity.productCode = hw_rev << 16 | mod_type;
+
+  /* 1018-3 - Set Firmwareversion anhand der in Git vorhandenen Versionsnummern */
+  globals.get_app_version(&main, &minor, &bugfix, &build);
+  OD_identity.revisionNumber = (u32)(main << 24 | minor << 16 | bugfix << 8 | build);
+
+  /* 1018-4 Serial number
+   *
+   * Wir verwenden die Prozessor UID als Startwert
+   */
+  id = system_get_uid32();
+  OD_identity.serialNumber = id;
+
+  /* 1f56 - Set Program Software Identification */
+  id = globals.get_app_checksum();
+  OD_programSoftwareIdentification[0] = id;
+
+  /* 2102 - CANopen Node ID */
+  OD_CANNodeID = 0;
+
+  /* 2102 - CAN bit rate */
+  OD_CANBitRate = this->active_bit;
+
+  /* 2111 - 96 Bit UID */
+  system_get_uid96(&OD_UID[ODA_UID_word0], &OD_UID[ODA_UID_word1],
+                   &OD_UID[ODA_UID_word2]);
+
+  /* 2112 - Daisy Chain */
+  OD_daisyChain.shiftIn = 0;
+
+  /* 5000-2 - Serial number Default */
+  OD_serialNumber.serial = OD_identity.serialNumber;
+}
+
+/**
+ * CANopen Startwerte aus Festwertspeicher einladen.
+ *
+ * Ist ein Bereich nicht vorhanden oder fehlerhaft wird mit den im Firmwareimage
+ * hinterlegten Daten gestartet.
+ *
+ * Diese Funktion darf nur vor dem Initialisieren des CO Stacks aufgerufen werden!
+ */
+void Canopen::od_load_start(void)
 {
   CO_ReturnError_t co_result;
-  BaseType_t os_result;
-  u8 persistent_nid;
-  u8 pending_nid;
-  u16 dummy;
 
-  /* Objektverzeichnis Festwerte eintragen */
-  od_set_defaults();
+  co_result = storage.load(Canopen_storage::COMMUNICATION);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_NOTICE, NOTE_CANOPEN_NVMEM_LOAD, co_result);
+  }
+
+  co_result = storage.load(Canopen_storage::PARAMS);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_NOTICE, NOTE_CANOPEN_NVMEM_LOAD, co_result);
+  }
+
+  co_result = storage.load(Canopen_storage::RUNTIME);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_NOTICE, NOTE_CANOPEN_NVMEM_LOAD, co_result);
+  }
+
+  co_result = storage.load(Canopen_storage::SERIAL);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_NOTICE, NOTE_CANOPEN_NVMEM_LOAD, co_result);
+  }
+
+  co_result = storage.load(Canopen_storage::TEST);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_NOTICE, NOTE_CANOPEN_NVMEM_LOAD, co_result);
+  }
+
+  co_result = storage.load(Canopen_storage::CALIB);
+  if (co_result != CO_ERROR_NO) {
+    log_printf(LOG_NOTICE, NOTE_CANOPEN_NVMEM_LOAD, co_result);
+  }
+}
+
+/**
+ * Bestimmt anhand der aus der im OD stehenden (aus dem NVM geladenen)
+ * NID und dem "Ubergabeparameter den LSS Startup
+ *
+ * @param p_pending_nid [in] vorgegebene NID [out] LSS Startup NID
+ */
+void Canopen::lss_check(u8* p_pending_nid)
+{
+  u8 persistent_nid;
 
   persistent_nid = 0;
-  pending_nid = 0;
-  *this->p_active_nid = CO_LSS_NODE_ID_ASSIGNMENT;
 
-  /* NVM Werte laden */
-  co_result = storage.load(Canopen_storage::PARAMS, !this->once);
-  if (co_result != CO_ERROR_NO) {
-    log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
-    /* Wir laufen mit den Defaultwerten los */
-  }
-
-  co_result = storage.load(Canopen_storage::RUNTIME, false);
-  if (co_result != CO_ERROR_NO) {
-    log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
-  }
-  if (this->once != true) {
-    OD_powerOnCounter ++;
-    storage.save(Canopen_storage::RUNTIME);
-  }
-
-  co_result = storage.load(Canopen_storage::SERIAL, false);
-  if (co_result != CO_ERROR_NO) {
-    log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
-  }
-
-  co_result = storage.load(Canopen_storage::TEST, false);
-  if (co_result != CO_ERROR_NO) {
-    log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
-  }
-
-  co_result = storage.load(Canopen_storage::CALIB, false);
-  if (co_result != CO_ERROR_NO) {
-    log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
-  }
-
-  /* Abh. vom Aufrufparameter wird die Persistent NID vom NVM geladen */
-  if (nid == 0) {
-    co_result = storage.load(Canopen_storage::COMMUNICATION, false);
-    persistent_nid = OD_CANNodeID;
-    //todo sch"on, todo bitrate
-    if ((co_result != CO_ERROR_NO) || ! CO_LSS_NODE_ID_VALID(persistent_nid)) {
-      /* NVM nicht initialisiert oder fehlerhaft */
-      log_printf(LOG_ERR, ERR_CANOPEN_NVMEM_LOAD, co_result);
+  /* Abh. vom Aufrufparameter wird die Persistent NID verwendet */
+  if (*p_pending_nid == 0) {
+    persistent_nid = OD_CANNodeID; // Default 0 oder aus NVM geladen
+    if ( ! CO_LSS_NODE_ID_VALID(persistent_nid)) {
       persistent_nid = CO_LSS_NODE_ID_ASSIGNMENT;
+      *this->p_active_nid = CO_LSS_NODE_ID_ASSIGNMENT;
     }
-    pending_nid = persistent_nid;
+    *p_pending_nid = persistent_nid;
   } else {
-    pending_nid = nid;
+    /* "ubergebene NID beibehalten */
   }
+}
+
+/**
+ * CANopenNode Initroutinen durchlaufen
+ *
+ * @return CO_ERROR_NO wenn erfolgreich
+ */
+CO_ReturnError_t Canopen::co_init(u8 pending_nid)
+{
+  CO_ReturnError_t co_result;
 
   /* CANopenNode, LSS initialisieren */
   co_result = CO_new();
@@ -1266,41 +1297,56 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
   /* start CAN */
   CO_CANsetNormalMode(CO->CANmodule[0]);
 
+  return CO_ERROR_NO;
+}
+
+/**
+ * LSS Node ID claiming wenn noch keine NID vergeben ist
+ *
+ * Blockiert und behandelt main() Housekeeping bis eine NID vergeben wurde!
+ *
+ * @param p_pending_nid [out] CANopen Startup NID
+ */
+void Canopen::lss_nid_assignment(u8* p_pending_nid)
+{
 #ifndef UNIT_TEST
-  if (this->once != true) {
-    (void)FreeRTOS_CLIRegisterCommand(&terminal);
-    (void)daisy_init(MODTYPE_HW_TEMPLATE, daisychain_event_callback_wrapper, this);
-  }
+  u16 dummy;
 
   /* Get Node ID */
   while (true) {
     CO_LSSslave_process(CO->LSSslave, this->active_bit, *this->p_active_nid,
-                        &dummy, &pending_nid);
-    if (pending_nid != CO_LSS_NODE_ID_ASSIGNMENT) {
-      break;
+                        &dummy, p_pending_nid);
+    if (*p_pending_nid != CO_LSS_NODE_ID_ASSIGNMENT) {
+      log_printf(LOG_NOTICE, NOTE_LSS, *p_pending_nid);
+      return;
     }
 
     housekeeping_main();
     (void)CO_CANrxWait(CO->CANmodule[0], this->main_interval);
-  };
-#else
-  /* no LSS in unit testing */
-  pending_nid = 127;
-#endif
-  if (pending_nid != persistent_nid) {
-    log_printf(LOG_NOTICE, NOTE_LSS, pending_nid);
   }
 
+#else
+  /* no LSS in unit testing */
+  *p_pending_nid = 127;
+#endif
+}
+
+CO_ReturnError_t Canopen::co_start(u8 pending_nid, u32 interval)
+{
+  CO_ReturnError_t co_result;
+  BaseType_t os_result;
+
+  this->worker_interval = interval;
+
   /* start CANopen */
-  *this->p_active_nid = pending_nid;
-  co_result = CO_CANopenInit(*this->p_active_nid);
+  co_result = CO_CANopenInit(pending_nid);
   if (co_result != CO_ERROR_NO) {
     log_printf(LOG_ERR, ERR_CANOPEN_INIT_FAILED, co_result);
     return co_result;
   }
+  *this->p_active_nid = pending_nid;
 
   /* Infos eintragen */
-  this->worker_interval = interval;
   threadMain_init(this->main_interval, xTaskGetCurrentTaskHandle()); /* ms Interval */
 
   /* OD Callbacks */
@@ -1330,7 +1376,49 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
     }
   }
 
-  this->once = true;
+  return CO_ERROR_NO;
+}
+
+CO_SDO_abortCode_t Canopen::serial_number_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
+{
+  return reinterpret_cast<Canopen*>(p_odf_arg->object)->serial_number_callback(p_odf_arg);
+}
+
+CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
+{
+  CO_ReturnError_t co_result;
+  u8 pending_nid;
+
+  od_set_defaults();
+  od_load_start();
+
+  pending_nid = nid;
+  lss_check(&pending_nid);
+
+  co_result = co_init(pending_nid);
+  if (co_result != CO_ERROR_NO) {
+    return co_result;
+  }
+
+#ifndef UNIT_TEST
+  if (this->once != true) {
+    (void)FreeRTOS_CLIRegisterCommand(&terminal);
+    (void)daisy_init(MODTYPE_HW_TEMPLATE, daisychain_event_callback_wrapper, this);
+  }
+#endif
+
+  lss_nid_assignment(&pending_nid);
+
+  co_result = co_start(pending_nid, interval);
+  if (co_result != CO_ERROR_NO) {
+    return co_result;
+  }
+
+  if (this->once != true) {
+    this->once = true;
+    OD_powerOnCounter ++;
+    (void)storage.save(Canopen_storage::RUNTIME);
+  }
 
   return CO_ERROR_NO;
 }
@@ -1420,10 +1508,10 @@ BaseType_t Canopen::cmd_terminal( char *pcWriteBuffer,
   tmp = strtoul(p_optarg, NULL, 0);
 
   switch (opt) {
-    case 'a':
-      /* nach Muster -a 22
-       * Quick & dirty den Callback aufrufen den auch LSS verwendet */
-      store_lss_config_callback(tmp, this->active_bit);
+    case 'n':
+      /* nach Muster -n 22 */
+      OD_CANNodeID = tmp;
+      (void)storage.save(Canopen_storage::COMMUNICATION);
       globals.request_reboot(); //triggert Comm Params restore
       break;
     case 'b':
@@ -1431,18 +1519,17 @@ BaseType_t Canopen::cmd_terminal( char *pcWriteBuffer,
        * Quick & dirty direkt in den Treiber, nicht speichernd */
       state = can_ioctl(CO->CANmodule[0]->driver, CAN_SET_BAUDRATE,
                         reinterpret_cast<void*>(&tmp));
-      //todo CO OD variable "andern
+      OD_CANBitRate = CO_LSS_bitTimingTableLookup[tmp];
       if (state != CAN_OK) {
         (void)snprintf(pcWriteBuffer, xWriteBufferLen, "Failed: %d" NEWLINE, state);
       }
       break;
-    case 'c':
-      if (tmp != 'c') { //int 99
+    case 'r':
+      /* nach Muster -r <type>. Wiederherstellung der Defaults erst nach Reset! */
+      if (tmp >= Canopen_storage::TYPE_COUNT) {
         break;
       }
-      /* nicht in Terminal Help, Seriennummer l"oschen */
-      OD_serialNumber.valid = false;
-      (void)storage.save(Canopen_storage::SERIAL);
+      (void)storage.restore(static_cast<Canopen_storage::storage_type_t>(tmp));
       break;
     default:
       (void)snprintf(pcWriteBuffer, xWriteBufferLen, terminal_text_unknown_option, opt);
@@ -1511,10 +1598,6 @@ CO_SDO_abortCode_t Canopen::daisychain_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
   return reinterpret_cast<Canopen*>(p_odf_arg->object)->daisychain_callback(p_odf_arg);
 }
 
-CO_SDO_abortCode_t Canopen::serial_number_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
-{
-  return reinterpret_cast<Canopen*>(p_odf_arg->object)->serial_number_callback(p_odf_arg);
-}
 
 /**
 * @} @}

@@ -33,7 +33,7 @@ class Canopen: public Canopen_errors {
   private:
     CO_NMT_reset_cmd_t reset;         /*!< Resetanforderung */
     u8 *const p_active_nid = &OD_CANNodeID; /*!< Eigene CANopen Node ID. Zeigt auf Eintrag im OD. */
-    static const u16 active_bit = 1000; /*!< Standard Bitrate */
+    u16 active_bit = 1000;            /*!< Standard Bitrate */
     class Canopen_storage storage;    /*!< OD Parameter */
     static const u8 main_interval = 50; /*!< ms, max. Wartezeit auf Events in process() */
     u32 worker_interval;              /*!< CO Thread Intervall */
@@ -50,7 +50,13 @@ class Canopen: public Canopen_errors {
     /*2112*/CO_SDO_abortCode_t daisychain_callback(CO_ODF_arg_t *p_odf_arg);
     /*5000*/CO_SDO_abortCode_t serial_number_callback(CO_ODF_arg_t *p_odf_arg);
 
+    /* Init Helper */
+    void od_load_start(void);
     void od_set_defaults(void);
+    void lss_check(u8 *p_pending_nid);
+    CO_ReturnError_t co_init(u8 pending_nid);
+    void lss_nid_assignment(u8 *p_pending_nid);
+    CO_ReturnError_t co_start(u8 pending_nid, u32 interval);
 
     /* Diese Callbacks m"ussen Klassenmethoden sein, da der Stack Callback
      * keinen Pointer f"ur die Instanz zur Verf"ugung stellt. Diese sind daher
