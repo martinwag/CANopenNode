@@ -159,6 +159,7 @@ typedef enum{
 #define CO_EMC_ADDITIONAL_FUNC          0xF000U /**< 0xF0xx, Additional Functions */
 #define CO_EMC_DEVICE_SPECIFIC          0xFF00U /**< 0xFFxx, Device specific */
 
+#define CO_EMC401_AI_DISABLED           0x0080U /**< 0x0080, DS401, Warning: Analog inputs disabled */
 #define CO_EMC401_OUT_CUR_HI            0x2310U /**< 0x2310, DS401, Current at outputs too high (overload) */
 #define CO_EMC401_OUT_SHORTED           0x2320U /**< 0x2320, DS401, Short circuit at outputs */
 #define CO_EMC401_OUT_LOAD_DUMP         0x2330U /**< 0x2330, DS401, Load dump at outputs */

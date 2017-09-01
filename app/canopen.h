@@ -305,7 +305,9 @@ class Canopen: public Canopen_errors {
 
 };
 
-extern class Canopen canopen;
+#ifndef MOCK_CANOPEN
+  extern class Canopen canopen;
+#endif
 
 #endif /* SRC_CANOPEN_CANOPEN_H_ */
 
