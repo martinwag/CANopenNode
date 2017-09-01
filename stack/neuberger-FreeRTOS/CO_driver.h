@@ -191,6 +191,22 @@ static inline void CO_UNLOCK_OD(void) { (void)xSemaphoreGive(CO_OD_mtx); }
 /** @} */
 
 /**
+ * @name Syncronisation functions
+ * syncronisation for message buffer for communication between CAN receive and
+ * message processing threads.
+ * @{
+ */
+#define CANrxMemoryBarrier() {__sync_synchronize()}
+/** Check if new message has arrived */
+static inline int IS_CANrxNew(volatile void *rxNew) {return (int)rxNew;};
+/** Set new message flag */
+static inline void SET_CANrxNew(volatile void *rxNew) { CANrxMemoryBarrier(); rxNew = (void*)1L; }
+/** Clear new message flag */
+static inline void CLEAR_CANrxNew(volatile void *rxNew) { CANrxMemoryBarrier(); rxNew = (void*)0L; }
+/** @} */
+
+
+/**
  * @name can driver queue sizes
  * @{
  */
