@@ -196,7 +196,7 @@ static inline void CO_UNLOCK_OD(void) { (void)xSemaphoreGive(CO_OD_mtx); }
  * message processing threads.
  * @{
  */
-#define CANrxMemoryBarrier() {__sync_synchronize()}
+#define CANrxMemoryBarrier() {__sync_synchronize();}
 /** Check if new message has arrived */
 static inline int IS_CANrxNew(volatile void *rxNew) {return (int)rxNew;};
 /** Set new message flag */
