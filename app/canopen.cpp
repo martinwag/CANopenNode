@@ -178,7 +178,7 @@ CO_SDO_abortCode_t Canopen::store_parameters_callback(CO_ODF_arg_t *p_odf_arg)
       OD_serialNumber.valid = true;
       /* Seriennummer eintragen, Datum abschneiden */
       OD_identity.serialNumber =
-          static_cast<u32>(OD_serialNumber.serial) % 100000000;
+          OD_serialNumber.serial % 100000000;
       type = Canopen_storage::SERIAL;
       break;
     case OD_1010_6_storeParameters_saveTestData:
@@ -1233,7 +1233,7 @@ void Canopen::od_load_start(void)
   } else if (OD_serialNumber.valid == true) {
     /* Seriennummer eintragen, Datum abschneiden */
     OD_identity.serialNumber =
-        static_cast<u32>(OD_serialNumber.serial) % 100000000;
+        OD_serialNumber.serial % 100000000;
   }
 
   co_result = storage.load(Canopen_storage::TEST);
