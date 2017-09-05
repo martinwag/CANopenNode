@@ -196,13 +196,14 @@ static inline void CO_UNLOCK_OD(void) { (void)xSemaphoreGive(CO_OD_mtx); }
  * message processing threads.
  * @{
  */
-#define CANrxMemoryBarrier() {__sync_synchronize();}
+/** Memory barrier */
+#define CANrxMemoryBarrier() (__sync_synchronize())
 /** Check if new message has arrived */
-static inline int IS_CANrxNew(volatile void *rxNew) {return (int)rxNew;};
+#define IS_CANrxNew(rxNew) ((int)rxNew)
 /** Set new message flag */
-static inline void SET_CANrxNew(volatile void *rxNew) { CANrxMemoryBarrier(); rxNew = (void*)1L; }
+#define SET_CANrxNew(rxNew) {CANrxMemoryBarrier(); rxNew = (void*)1L;}
 /** Clear new message flag */
-static inline void CLEAR_CANrxNew(volatile void *rxNew) { CANrxMemoryBarrier(); rxNew = (void*)0L; }
+#define CLEAR_CANrxNew(rxNew) {CANrxMemoryBarrier(); rxNew = (void*)0L;}
 /** @} */
 
 

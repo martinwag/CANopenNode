@@ -190,9 +190,9 @@
 /** Check if new message has arrived */
 #define IS_CANrxNew(rxNew) ((int)rxNew)
 /** Set new message flag */
-#define SET_CANrxNew(rxNew) CANrxMemoryBarrier(); rxNew = (void*)1L;
+#define SET_CANrxNew(rxNew) {CANrxMemoryBarrier(); rxNew = (void*)1L;}
 /** Clear new message flag */
-#define CLEAR_CANrxNew(rxNew) CANrxMemoryBarrier(); rxNew = (void*)0L;
+#define CLEAR_CANrxNew(rxNew) {CANrxMemoryBarrier(); rxNew = (void*)0L;}
 /** @} */
 
 /**
