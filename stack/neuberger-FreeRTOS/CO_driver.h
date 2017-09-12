@@ -199,7 +199,7 @@ static inline void CO_UNLOCK_OD(void) { (void)xSemaphoreGive(CO_OD_mtx); }
 /** Memory barrier */
 #define CANrxMemoryBarrier() (__sync_synchronize())
 /** Check if new message has arrived */
-#define IS_CANrxNew(rxNew) ((int)rxNew)
+#define IS_CANrxNew(rxNew) ((long)rxNew)
 /** Set new message flag */
 #define SET_CANrxNew(rxNew) {CANrxMemoryBarrier(); rxNew = (void*)1L;}
 /** Clear new message flag */
