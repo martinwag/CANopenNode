@@ -110,11 +110,12 @@ typedef enum{
     CO_ERROR_TX_UNCONFIGURED    = -11,
     CO_ERROR_PARAMETERS         = -12,
     CO_ERROR_DATA_CORRUPT       = -13,
-    CO_ERROR_CRC                = -14
+    CO_ERROR_CRC                = -14,
+    CO_ERROR_SYSCALL            = -15
 }CO_ReturnError_t;
 
 
-/* CAN receive message structure as aligned in CAN module. */
+/* CAN receive message structure as aligned in socketCAN module. */
 typedef struct{
     uint32_t        ident;
     uint8_t         DLC;
@@ -151,16 +152,11 @@ typedef struct{
     uint16_t            rxSize;
     CO_CANtx_t         *txArray;
     uint16_t            txSize;
-    uint16_t            wasConfigured;/* Zero only on first run of CO_CANmodule_init */
     int                 fd;         /* CAN_RAW socket file descriptor */
     struct can_filter  *filter;     /* array of CAN filters of size rxSize */
     volatile bool_t     CANnormal;
     volatile bool_t     useCANrxFilters;
-    volatile bool_t     bufferInhibitFlag;
-    volatile bool_t     firstCANtxMessage;
-    volatile uint8_t    error;
-    volatile uint16_t   CANtxCount;
-    uint32_t            errOld;
+    uint32_t            CANrxDropCount; /* messages dropped on rx socket queue */
     void               *em;
 }CO_CANmodule_t;
 
