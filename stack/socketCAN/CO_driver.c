@@ -232,7 +232,7 @@ CO_ReturnError_t CO_CANmodule_init(
     sockAddr.can_ifindex = CANbaseAddress;
     ret = bind(CANmodule->fd, (struct sockaddr*)&sockAddr, sizeof(sockAddr));
     if(ret < 0){
-        printf("Linux Syscall bind() failed (%d - %s)", errno, strerror(errno));
+        printf("Linux Syscall bind() failed (%d - %s\n)", errno, strerror(errno));
         CO_CANmodule_disable(CANmodule);
         return CO_ERROR_SYSCALL;
     }
@@ -248,7 +248,7 @@ CO_ReturnError_t CO_CANmodule_init(
     ret = setsockopt(CANmodule->fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &err_mask,
                      sizeof(err_mask));
     if(ret < 0){
-        printf("Linux Syscall setsockopt(ERR) failed (%d - %s)",
+        printf("Linux Syscall setsockopt(ERR) failed (%d - %s\n)",
                errno, strerror(errno));
         CO_CANmodule_disable(CANmodule);
         return CO_ERROR_SYSCALL;
@@ -257,7 +257,7 @@ CO_ReturnError_t CO_CANmodule_init(
     /* disable the reception of CAN frames for now. */
     ret = setsockopt(CANmodule->fd, SOL_CAN_RAW, CAN_RAW_FILTER, NULL, 0);
     if(ret < 0){
-        printf("Linux Syscall setsockopt(FILTER) failed (%d - %s)",
+        printf("Linux Syscall setsockopt(FILTER) failed (%d - %s\n)",
                errno, strerror(errno));
         CO_CANmodule_disable(CANmodule);
         return CO_ERROR_SYSCALL;
@@ -289,7 +289,7 @@ void CO_CANmodule_disable(CO_CANmodule_t *CANmodule)
 /******************************************************************************/
 uint16_t CO_CANrxMsg_readIdent(const CO_CANrxMsg_t *rxMsg)
 {
-    return (uint16_t) rxMsg->ident;
+    return (uint16_t) (rxMsg->ident & CAN_SFF_MASK);
 }
 
 
@@ -403,7 +403,7 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
     if(n != count){
         CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, n);
         err = CO_ERROR_TX_OVERFLOW;
-        printf("Linux Syscall write() failed (%d - %s)",
+        printf("Linux Syscall write() failed (%d - %s\n)",
                errno, strerror(errno));
     }
 
@@ -521,7 +521,7 @@ static CO_ReturnError_t CO_CANread(
         else if (n <= 0) {
             CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_RXB_OVERFLOW,
                            CO_EMC_CAN_OVERRUN, n);
-            printf("Linux Syscall recvmsg() failed (%d - %s)",
+            printf("Linux Syscall recvmsg() failed (%d - %s\n)",
                    errno, strerror(errno));
 
             return CO_ERROR_SYSCALL;
