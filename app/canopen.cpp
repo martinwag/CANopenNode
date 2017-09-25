@@ -16,20 +16,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "FreeRTOS.h"
-#include "task.h"
+#include "os/freertos/include/FreeRTOS.h"
+#include "os/freertos/include/task.h"
 
-#include "log.h"
-#include "errors.h"
+#include "interface/log.h"
+#include "interface/errors.h"
 
-#include "nbtyp.h"
-#include "wdt.h"
-#include "ad.h"
-#include "led.h"
-#include "daisychain.h"
-#include "bootloader.h"
-#include "terminal.h"
-#include "system.h"
+#include "interface/nbtyp.h"
+#include "drivers/wdt.h"
+#include "drivers/ad.h"
+#include "drivers/led.h"
+#include "drivers/daisychain.h"
+#include "drivers/bootloader.h"
+#include "os/terminal.h"
+#include "drivers/system.h"
 
 #include "CANopen.h"
 #include "CO_freertos_threads.h"
@@ -38,7 +38,7 @@
 #include "canopen.h"
 #include "globdef.h"
 #include "messages.h"
-#include "main.h"
+#include "os/main.h"
 
 #ifndef UNIT_TEST
 

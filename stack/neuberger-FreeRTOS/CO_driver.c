@@ -48,12 +48,12 @@
 #include "CO_driver.h"
 #include "CO_Emergency.h"
 
-#include "can.h"
-#include "led.h"
-#include "modtype.h"
-#include "can_error.h"
-#include "driver_defs.h"
-#include "log.h"
+#include "drivers/can.h"
+#include "drivers/led.h"
+#include "drivers/modtype.h"
+#include "drivers/can_error.h"
+#include "drivers/driver_defs.h"
+#include "interface/log.h"
 
 static const char CAN_ERR_MSG[] = "CAN err %d 0x%x";
 

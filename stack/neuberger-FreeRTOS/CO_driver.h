@@ -56,11 +56,11 @@ extern "C" {
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
 
-#include "FreeRTOS.h"
-#include "semphr.h"
+#include "os/freertos/include/FreeRTOS.h"
+#include "os/freertos/include/semphr.h"
 
-#include "utils.h"
-#include "can.h"
+#include "interface/utils.h"
+#include "drivers/can.h"
 
 
 /**

@@ -19,8 +19,8 @@
 
 #include "globdef.h"
 
-#include "FreeRTOS.h"
-#include "queue.h"
+#include "os/freertos/include/FreeRTOS.h"
+#include "os/freertos/include/queue.h"
 
 /**
  * Ablage eines CANopen Speicherbereichs
