@@ -19,9 +19,9 @@
 
 #include "canopen_storage.h"
 #include "globdef.h"
-#include "checksum.h"
-#include "log.h"
-#include "errors.h"
+#include "drivers/checksum.h"
+#include "interface/log.h"
+#include "interface/errors.h"
 
 CO_ReturnError_t Canopen_storage_type::load(
     u16 start, u16 reserved, u16 size, u8 *p_work, u8 *p_to)

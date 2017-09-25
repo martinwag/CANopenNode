@@ -43,8 +43,8 @@
  * to do so, delete this exception statement from your version.
  */
 
-#include "FreeRTOS.h"
-#include "task.h"
+#include "os/freertos/include/FreeRTOS.h"
+#include "os/freertos/include/task.h"
 
 #include "CO_driver.h"
 #include "CANopen.h"

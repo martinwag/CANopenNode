@@ -43,7 +43,7 @@
  * to do so, delete this exception statement from your version.
  */
 
-#include "checksum.h"
+#include "drivers/checksum.h"
 
 /*
  * This function wraps the BSP CRC function to the CANopenNode signature.

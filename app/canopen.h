@@ -15,12 +15,12 @@
 
 #include "CANopen.h"
 
-#include "FreeRTOS.h"
-#include "queue.h"
-#include "FreeRTOS_CLI.h"
+#include "os/freertos/include/FreeRTOS.h"
+#include "os/freertos/include/queue.h"
+#include "os/freertos_cli/FreeRTOS_CLI.h"
 
-#include "nbtyp.h"
-#include "can.h"
+#include "interface/nbtyp.h"
+#include "drivers/can.h"
 
 #include "canopen_storage.h"
 #include "canopen_errors.h"
