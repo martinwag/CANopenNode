@@ -64,12 +64,14 @@
 /** Disable socketCAN rx *****************************************************/
 static CO_ReturnError_t disableRx(CO_CANmodule_t *CANmodule)
 {
-  CO_ReturnError_t ret;
+  int ret;
 
   /* insert a filter that doesn't match any messages */
   ret = setsockopt(CANmodule->fd, SOL_CAN_RAW, CAN_RAW_FILTER, NULL, 0);
-
-  return ret;
+  if(ret < 0){
+      return CO_ERROR_SYSCALL;
+  }
+  return CO_ERROR_NO;
 }
 
 /** Set up or update socketCAN rx filters *************************************/
@@ -96,13 +98,11 @@ static CO_ReturnError_t setRxFilters(CO_CANmodule_t *CANmodule)
 
     if (count == 0) {
         /* No filter is set, disable RX */
-        ret = disableRx(CANmodule);
-    }
-    else {
-        ret = setsockopt(CANmodule->fd, SOL_CAN_RAW, CAN_RAW_FILTER, rxFiltersCpy,
-                         sizeof(struct can_filter) * count);
+        return disableRx(CANmodule);
     }
 
+    ret = setsockopt(CANmodule->fd, SOL_CAN_RAW, CAN_RAW_FILTER, rxFiltersCpy,
+                     sizeof(struct can_filter) * count);
     if(ret < 0){
         return CO_ERROR_SYSCALL;
     }
@@ -124,7 +124,7 @@ void CO_CANsetNormalMode(CO_CANmodule_t *CANmodule)
 
     CANmodule->CANnormal = false;
 
-    if(CANmodule == NULL || CANmodule->fd < 0) {
+    if(CANmodule != NULL && CANmodule->fd >= 0) {
         ret = setRxFilters(CANmodule);
         if (ret == CO_ERROR_NO) {
             /* Put CAN module in normal mode */
