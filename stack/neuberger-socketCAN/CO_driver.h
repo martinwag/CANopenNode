@@ -1,12 +1,13 @@
 /**
- * CAN module object for generic microcontroller.
+ * CAN module object for Linux socketCAN.
  *
  * This file is a template for other microcontrollers.
  *
- * @file        CO_driver.h
+ * @file        CO_driver.c
  * @ingroup     CO_driver
- * @author      Janez Paternoster
- * @copyright   2004 - 2015 Janez Paternoster
+ * @author      Janez Paternoster, Martin Wagner
+ * @copyright   2004 - 2015 Janez Paternoster, 2017 Neuberger Gebaeudeautomation GmbH
+ *
  *
  * This file is part of CANopenNode, an opensource CANopen Stack.
  * Project home page is <https://github.com/CANopenNode/CANopenNode>.
@@ -58,13 +59,12 @@ extern "C" {
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
 
-
 /**
  * @defgroup CO_driver Driver
  * @ingroup CO_CANopen
  * @{
  *
- * Microcontroller specific code for CANopenNode.
+ * socketCAN specific code for CANopenNode.
  *
  * This file contains type definitions, functions and macros for:
  *  - Basic data types.
@@ -239,13 +239,13 @@ typedef enum{
     CO_ERROR_TX_UNCONFIGURED    = -11,  /**< Transmit buffer was not confugured properly */
     CO_ERROR_PARAMETERS         = -12,  /**< Error in function function parameters */
     CO_ERROR_DATA_CORRUPT       = -13,  /**< Stored data are corrupt */
-    CO_ERROR_CRC                = -14   /**< CRC does not match */
+    CO_ERROR_CRC                = -14,  /**< CRC does not match */
+    CO_ERROR_SYSCALL            = -15   /**< Syscall failed */
 }CO_ReturnError_t;
 
 
 /**
- * CAN receive message structure as aligned in CAN module. It is different in
- * different microcontrollers. It usually contains other variables.
+ * CAN receive message structure as aligned in socketCAN.
  */
 typedef struct{
     /** CAN identifier. It must be read through CO_CANrxMsg_readIdent() function. */
@@ -259,8 +259,8 @@ typedef struct{
  * Received message object
  */
 typedef struct{
-    uint16_t            ident;          /**< Standard CAN Identifier (bits 0..10) + RTR (bit 11) */
-    uint16_t            mask;           /**< Standard Identifier mask with same alignment as ident */
+    uint32_t            ident;          /**< Standard CAN Identifier (bits 0..10) + RTR (bit 11) */
+    uint32_t            mask;           /**< Standard Identifier mask with same alignment as ident */
     void               *object;         /**< From CO_CANrxBufferInit() */
     void              (*pFunct)(void *object, const CO_CANrxMsg_t *message);  /**< From CO_CANrxBufferInit() */
 }CO_CANrx_t;
@@ -286,25 +286,13 @@ typedef struct{
     int32_t             CANbaseAddress; /**< From CO_CANmodule_init() */
     CO_CANrx_t         *rxArray;        /**< From CO_CANmodule_init() */
     uint16_t            rxSize;         /**< From CO_CANmodule_init() */
+    struct can_filter  *rxFilter;       /**< socketCAN filter list, one per rx buffer */
+    uint32_t            rxDropCount;    /**< messages dropped on rx socket queue */
     CO_CANtx_t         *txArray;        /**< From CO_CANmodule_init() */
     uint16_t            txSize;         /**< From CO_CANmodule_init() */
     volatile bool_t     CANnormal;      /**< CAN module is in normal mode */
-    /** Value different than zero indicates, that CAN module hardware filters
-      * are used for CAN reception. If there is not enough hardware filters,
-      * they won't be used. In this case will be *all* received CAN messages
-      * processed by software. */
-    volatile bool_t     useCANrxFilters;
-    /** If flag is true, then message in transmitt buffer is synchronous PDO
-      * message, which will be aborted, if CO_clearPendingSyncPDOs() function
-      * will be called by application. This may be necessary if Synchronous
-      * window time was expired. */
-    volatile bool_t     bufferInhibitFlag;
-    /** Equal to 1, when the first transmitted message (bootup message) is in CAN TX buffers */
-    volatile bool_t     firstCANtxMessage;
-    /** Number of messages in transmit buffer, which are waiting to be copied to the CAN module */
-    volatile uint16_t   CANtxCount;
-    uint32_t            errOld;         /**< Previous state of CAN errors */
     void               *em;             /**< Emergency object */
+    int fd;
 }CO_CANmodule_t;
 
 
@@ -314,8 +302,13 @@ typedef struct{
  * Depending on processor or compiler architecture, one of the two macros must
  * be defined: CO_LITTLE_ENDIAN or CO_BIG_ENDIAN. CANopen itself is little endian.
  */
-#define CO_LITTLE_ENDIAN
-
+#ifdef __BYTE_ORDER
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+    #define CO_LITTLE_ENDIAN
+#else
+    #define CO_BIG_ENDIAN
+#endif
+#endif
 
 /**
  * Request CAN configuration (stopped) mode and *wait* untill it is set.
@@ -334,7 +327,7 @@ void CO_CANsetNormalMode(CO_CANmodule_t *CANmodule);
 
 
 /**
- * Initialize CAN module object.
+ * Initialize CAN module object and open socketCAN connection.
  *
  * Function must be called in the communication reset section. CAN module must
  * be in Configuration Mode before.
@@ -345,10 +338,10 @@ void CO_CANsetNormalMode(CO_CANmodule_t *CANmodule);
  * @param rxSize Size of the above array. Must be equal to number of receiving CAN objects.
  * @param txArray Array for handling transmitting CAN messages
  * @param txSize Size of the above array. Must be equal to number of transmitting CAN objects.
- * @param CANbitRate Valid values are (in kbps): 10, 20, 50, 125, 250, 500, 800, 1000.
- * If value is illegal, bitrate defaults to 125.
+ * @param CANbitRate not supported in this driver. Needs to be set by OS
  *
- * Return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
+ * Return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT or
+ * CO_ERROR_SYSCALL.
  */
 CO_ReturnError_t CO_CANmodule_init(
         CO_CANmodule_t         *CANmodule,
@@ -361,7 +354,7 @@ CO_ReturnError_t CO_CANmodule_init(
 
 
 /**
- * Switch off CANmodule. Call at program exit.
+ * Close socketCAN connection. Call at program exit.
  *
  * @param CANmodule CAN module object.
  */
@@ -452,39 +445,28 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer);
 
 /**
  * Clear all synchronous TPDOs from CAN module transmit buffers.
- *
- * CANopen allows synchronous PDO communication only inside time between SYNC
- * message and SYNC Window. If time is outside this window, new synchronous PDOs
- * must not be sent and all pending sync TPDOs, which may be on CAN TX buffers,
- * must be cleared.
- *
- * This function checks (and aborts transmission if necessary) CAN TX buffers
- * when it is called. Function should be called by the stack in the moment,
- * when SYNC time was just passed out of synchronous window.
- *
- * @param CANmodule This object.
+ * This function is not supported in this driver.
  */
 void CO_CANclearPendingSyncPDOs(CO_CANmodule_t *CANmodule);
 
 
 /**
  * Verify all errors of CAN module.
- *
- * Function is called directly from CO_EM_process() function.
- *
- * @param CANmodule This object.
+ * This function is not supported in this driver. Error checking is done
+ * inside <CO_CANrxWait()>.
  */
 void CO_CANverifyErrors(CO_CANmodule_t *CANmodule);
 
 
 /**
- * Receives and transmits CAN messages.
+ * Functions receives CAN messages. It is blocking.
  *
- * Function must be called directly from high priority CAN interrupt.
+ * The received messages are evaluated inside this function and the corresponding
+ * callback or error handler is called.
  *
  * @param CANmodule This object.
  */
-void CO_CANinterrupt(CO_CANmodule_t *CANmodule);
+void CO_CANrxWait(CO_CANmodule_t *CANmodule);
 
 #ifdef __cplusplus
 }
