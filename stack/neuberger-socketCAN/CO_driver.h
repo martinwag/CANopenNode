@@ -396,9 +396,9 @@ uint16_t CO_CANrxMsg_readIdent(const CO_CANrxMsg_t *rxMsg);
  */
 CO_ReturnError_t CO_CANrxBufferInit(
         CO_CANmodule_t         *CANmodule,
-        uint16_t                index,
-        uint16_t                ident,
-        uint16_t                mask,
+        uint32_t                index,
+        uint32_t                ident,
+        uint32_t                mask,
         bool_t                  rtr,
         void                   *object,
         void                  (*pFunct)(void *object, const CO_CANrxMsg_t *message));
@@ -424,8 +424,8 @@ CO_ReturnError_t CO_CANrxBufferInit(
  */
 CO_CANtx_t *CO_CANtxBufferInit(
         CO_CANmodule_t         *CANmodule,
-        uint16_t                index,
-        uint16_t                ident,
+        uint32_t                index,
+        uint32_t                ident,
         bool_t                  rtr,
         uint8_t                 noOfBytes,
         bool_t                  syncFlag);
