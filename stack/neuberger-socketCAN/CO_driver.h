@@ -251,6 +251,7 @@ typedef struct{
     /** CAN identifier. It must be read through CO_CANrxMsg_readIdent() function. */
     uint32_t            ident;
     uint8_t             DLC ;           /**< Length of CAN message */
+    uint8_t             padding[3];     /**< ensure alignment */
     uint8_t             data[8];        /**< 8 data bytes */
 }CO_CANrxMsg_t;
 
