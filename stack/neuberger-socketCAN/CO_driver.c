@@ -459,21 +459,23 @@ static CO_ReturnError_t CO_CANread(
 }
 
 /******************************************************************************/
-void CO_CANrxWait(CO_CANmodule_t *CANmodule)
+int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, CO_CANrxMsg_t *buffer)
 {
+    int32_t retval;
     CO_ReturnError_t err;
     struct can_frame msg;
 
     if (CANmodule==NULL || CANmodule->fd<0) {
-        return;
+        return -1;
     }
 
     /* blocking read */
     err = CO_CANread(CANmodule, &msg);
     if (err != CO_ERROR_NO) {
-        return;
+        return -1;
     }
 
+    retval = -1;
     if(CANmodule->CANnormal){
 
         if (msg.can_id & CAN_ERR_FLAG) {
@@ -482,7 +484,7 @@ void CO_CANrxWait(CO_CANmodule_t *CANmodule)
             CO_CANrxMsg_t *rcvMsg;      /* pointer to received message in CAN module */
             uint16_t index;             /* index of received message */
             uint32_t rcvMsgIdent;       /* identifier of the received message */
-            CO_CANrx_t *buffer = NULL;  /* receive message buffer from CO_CANmodule_t object. */
+            CO_CANrx_t *rcvMsgObj = NULL; /* receive message object from CO_CANmodule_t object. */
             bool_t msgMatched = false;
 
             /* CANopenNode can message is compatible to the socketCAN one, except
@@ -493,18 +495,26 @@ void CO_CANrxWait(CO_CANmodule_t *CANmodule)
 
             /* Message has been received. Search rxArray from CANmodule for the
              * same CAN-ID. */
-            buffer = &CANmodule->rxArray[0];
+            rcvMsgObj = &CANmodule->rxArray[0];
             for(index = CANmodule->rxSize; index > 0U; index--){
-                if(((rcvMsgIdent ^ buffer->ident) & buffer->mask) == 0U){
+                if(((rcvMsgIdent ^ rcvMsgObj->ident) & rcvMsgObj->mask) == 0U){
                     msgMatched = true;
                     break;
                 }
-                buffer++;
+                rcvMsgObj++;
             }
-            /* Call specific function, which will process the message */
-            if(msgMatched && (buffer != NULL) && (buffer->pFunct != NULL)){
-                buffer->pFunct(buffer->object, rcvMsg);
+            if(msgMatched) {
+                /* Call specific function, which will process the message */
+                if ((rcvMsgObj != NULL) && (rcvMsgObj->pFunct != NULL)){
+                    rcvMsgObj->pFunct(rcvMsgObj->object, rcvMsg);
+                }
+                /* return message */
+                if (buffer != NULL) {
+                    memcpy(buffer, rcvMsg, sizeof(*buffer));
+                }
+                retval = index;
             }
         }
     }
+    return retval;
 }

@@ -463,12 +463,19 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule);
 /**
  * Functions receives CAN messages. It is blocking.
  *
- * The received messages are evaluated inside this function and the corresponding
- * callback or error handler is called.
+ * This function can be used in two ways
+ * - automatic mode (call callback that is set by #CO_CANrxBufferInit() function)
+ * - manual mode (evaluate message filters, return received message)
+ *
+ * Both modes can be combined.
  *
  * @param CANmodule This object.
+ * @param buffer [out] storage for received message or _NULL_
+ * @retval >= 0 index of received message in array set by #CO_CANmodule_init()
+ *         _rxArray_, copy available in _buffer_
+ * @retval -1 no message received
  */
-void CO_CANrxWait(CO_CANmodule_t *CANmodule);
+int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, CO_CANrxMsg_t *buffer);
 
 #ifdef __cplusplus
 }
