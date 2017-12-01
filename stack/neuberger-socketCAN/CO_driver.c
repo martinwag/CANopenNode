@@ -174,9 +174,6 @@ CO_ReturnError_t CO_CANmodule_init(
         rxArray[i].object = NULL;
         rxArray[i].pFunct = NULL;
     }
-    for(i=0U; i<txSize; i++){
-        txArray[i].bufferFull = false;
-    }
 
     /* initialize socketCAN filters
      * CAN module filters will be configured with CO_CANrxBufferInit()
@@ -285,7 +282,7 @@ CO_ReturnError_t CO_CANrxBufferInit(
 {
     CO_ReturnError_t ret = CO_ERROR_NO;
 
-    if((CANmodule!=NULL) && (object!=NULL) && (pFunct!=NULL) && (index < CANmodule->rxSize)){
+    if((CANmodule!=NULL) && (index < CANmodule->rxSize)){
         /* buffer, which will be configured */
         CO_CANrx_t *buffer = &CANmodule->rxArray[index];
 
@@ -336,8 +333,6 @@ CO_CANtx_t *CO_CANtxBufferInit(
             buffer->ident |= CAN_RTR_FLAG;
         }
         buffer->DLC = noOfBytes;
-        buffer->bufferFull = false;
-        buffer->syncFlag = syncFlag;
     }
 
     return buffer;

@@ -268,17 +268,9 @@ typedef struct{
 
 
 /**
- * Transmit message object.
+ * Transmit message object. No difference to rxMsg in this driver.
  */
-typedef struct{
-    uint32_t            ident;          /**< CAN identifier as aligned in CAN module */
-    uint8_t             DLC ;           /**< Length of CAN message. (DLC may also be part of ident) */
-    uint8_t             padding[3];     /**< ensure alignment */
-    uint8_t             data[8];        /**< 8 data bytes */
-    volatile bool_t     bufferFull;     /**< True if previous message is still in buffer */
-    /** Synchronous PDO messages has this flag set. It prevents them to be sent outside the synchronous window */
-    volatile bool_t     syncFlag;
-}CO_CANtx_t;
+typedef CO_CANrxMsg_t CO_CANtx_t;
 
 
 /**
@@ -416,8 +408,7 @@ CO_ReturnError_t CO_CANrxBufferInit(
  * @param ident 11-bit standard CAN Identifier.
  * @param rtr If true, 'Remote Transmit Request' messages will be transmitted.
  * @param noOfBytes Length of CAN message in bytes (0 to 8 bytes).
- * @param syncFlag This flag bit is used for synchronous TPDO messages. If it is set,
- * message will not be sent, if curent time is outside synchronous window.
+ * @param syncFlag not supported
  *
  * @return Pointer to CAN transmit message buffer. 8 bytes data array inside
  * buffer should be written, before CO_CANsend() function is called.
