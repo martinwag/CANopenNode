@@ -224,6 +224,8 @@ typedef struct{
     bool_t              valid;          /**< True, if PDO is enabled and valid */
     /** Data length of the transmitting PDO message. Calculated from mapping */
     uint8_t             dataLength;
+    /** Info for #CO_TPDO_isManualControl() */
+    bool_t              manualControl;
     /** If application set this flag, PDO will be later sent by
     function CO_TPDO_process(). Depends on transmission type. */
     uint8_t             sendRequest;
@@ -334,6 +336,30 @@ CO_ReturnError_t CO_TPDO_init(
         uint16_t                idx_TPDOMapPar,
         CO_CANmodule_t         *CANdevTx,
         uint16_t                CANdevTxIdx);
+
+
+/**
+ * Request manual control of #CO_TPDO_process() and function from application
+ *
+ * This is only allowed in transmission type 254/255
+ *
+ * @param TPDO This object.
+ * @param take True = manual, False = automatic
+ * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
+ */
+CO_ReturnError_t CO_TPDO_takeManualControl(
+        CO_TPDO_t              *TPDO,
+        bool_t                  take);
+
+
+/**
+ * Checks if manual control is requested for a TPDO
+ *
+ * @param TPDO This object.
+ * @retval True PDO transmission is handled by user application
+ * @retval False PDO transmission is handled by stack
+ */
+bool_t CO_TPDO_isManualControl(CO_TPDO_t *TPDO);
 
 
 /**

@@ -558,6 +558,9 @@ static CO_SDO_abortCode_t CO_ODF_TPDOcom(CO_ODF_arg_t *ODF_arg){
     else if(ODF_arg->subIndex == 2){   /* Transmission_type */
         uint8_t *value = (uint8_t*) ODF_arg->data;
 
+        /* sync not permitted in manual mode. See #CO_TPDO_takeManualControl() */
+        if(TPDO->manualControl && *value >= 0 && *value <= 240)
+            return CO_SDO_AB_INVALID_VALUE;  /* Invalid value for parameter (download only). */
         /* values from 241...253 are not valid */
         if(*value >= 241 && *value <= 253)
             return CO_SDO_AB_INVALID_VALUE;  /* Invalid value for parameter (download only). */
@@ -806,6 +809,7 @@ CO_ReturnError_t CO_TPDO_init(
     TPDO->nodeId = nodeId;
     TPDO->defaultCOB_ID = defaultCOB_ID;
     TPDO->restrictionFlags = restrictionFlags;
+    TPDO->manualControl = false;
 
     /* Configure Object dictionary entry at index 0x1800+ and 0x1A00+ */
     CO_OD_configure(SDO, idx_TPDOCommPar, CO_ODF_TPDOcom, (void*)TPDO, 0, 0);
@@ -831,6 +835,32 @@ CO_ReturnError_t CO_TPDO_init(
     return CO_ERROR_NO;
 }
 
+/******************************************************************************/
+CO_ReturnError_t CO_TPDO_takeManualControl(
+        CO_TPDO_t              *TPDO,
+        bool_t                  take)
+{
+    if(TPDO==NULL) {
+        return CO_ERROR_ILLEGAL_ARGUMENT;
+    }
+
+    TPDO->manualControl = false;
+    if (take) {
+        if (TPDO->TPDOCommPar->transmissionType<254){
+            /* manual only permitted in manufacturer or async mode. Sync mode is
+             * not available because syncing should be done as one step */
+            return CO_ERROR_ILLEGAL_ARGUMENT;
+        }
+        TPDO->manualControl = true;
+    }
+    return CO_ERROR_NO;
+}
+
+/******************************************************************************/
+bool_t CO_TPDO_isManualControl(CO_TPDO_t *TPDO)
+{
+  return TPDO->manualControl;
+}
 
 /******************************************************************************/
 uint8_t CO_TPDOisCOS(CO_TPDO_t *TPDO){
