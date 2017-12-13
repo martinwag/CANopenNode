@@ -70,13 +70,16 @@ static void CO_PDO_receive(void *object, const CO_CANrxMsg_t *msg){
         (*RPDO->operatingState == CO_NMT_OPERATIONAL) &&
         (msg->DLC >= RPDO->dataLength))
     {
+#ifdef RPDO_MANUAL_CONTROL_EXTENSION
         if (CO_RPDO_isManualControl(RPDO)) {
             /* RPDO is handled by user application */
             if (RPDO->pFuncManualControl!=NULL) {
                 RPDO->pFuncManualControl(RPDO, msg);
             }
         }
-        else if(RPDO->synchronous && RPDO->SYNC->CANrxToggle) {
+        else
+#endif
+        if(RPDO->synchronous && RPDO->SYNC->CANrxToggle) {
             /* copy data into second buffer and set 'new message' flag */
             RPDO->CANrxData[1][0] = msg->data[0];
             RPDO->CANrxData[1][1] = msg->data[1];
@@ -783,7 +786,7 @@ CO_ReturnError_t CO_RPDO_init(
     return CO_ERROR_NO;
 }
 
-
+#ifdef RPDO_MANUAL_CONTROL_EXTENSION
 /******************************************************************************/
 CO_ReturnError_t CO_RPDO_takeManualControl(
         CO_RPDO_t              *RPDO,
@@ -806,7 +809,7 @@ bool_t CO_RPDO_isManualControl(CO_RPDO_t *RPDO)
     }
     return false;
 }
-
+#endif
 
 /******************************************************************************/
 CO_ReturnError_t CO_TPDO_init(
@@ -839,7 +842,9 @@ CO_ReturnError_t CO_TPDO_init(
     TPDO->nodeId = nodeId;
     TPDO->defaultCOB_ID = defaultCOB_ID;
     TPDO->restrictionFlags = restrictionFlags;
+#ifdef TPDO_MANUAL_CONTROL_EXTENSION
     TPDO->manualControl = false;
+#endif
 
     /* Configure Object dictionary entry at index 0x1800+ and 0x1A00+ */
     CO_OD_configure(SDO, idx_TPDOCommPar, CO_ODF_TPDOcom, (void*)TPDO, 0, 0);
@@ -865,7 +870,7 @@ CO_ReturnError_t CO_TPDO_init(
     return CO_ERROR_NO;
 }
 
-
+#ifdef TPDO_MANUAL_CONTROL_EXTENSION
 /******************************************************************************/
 CO_ReturnError_t CO_TPDO_takeManualControl(
         CO_TPDO_t              *TPDO,
@@ -896,6 +901,7 @@ bool_t CO_TPDO_isManualControl(CO_TPDO_t *TPDO)
     }
     return false;
 }
+#endif
 
 
 /******************************************************************************/

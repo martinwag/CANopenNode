@@ -79,6 +79,36 @@ extern "C" {
  *    automatic detection of Change of State of specific variable.
  */
 
+/**
+ * @defgroup CO_PDO_Manual Manual PDO control
+ * @ingroup CO_PDO
+ * @{
+ *
+ * Manual PDO sending and receiving in user application
+ *
+ * PDO processing can be moved from CANopenNode to the user application. This
+ * can be a required by a user application if the default handling inside the
+ * stack is not suitable:
+ * - TPDOs with COV (change of value) instead of COS transmission
+ * - PDOs with streaming data content
+ *
+ * However, this brings some severe limitations.
+ * - You need to know which PDO to use beforehand. This means, in most cases,
+ *   that you will need static PDO mapping parameters for that PDO.
+ * - There is no way to only control one mapped object, but have the others
+ *   managed by the stack. This is all or nothing.
+ * - TPDO
+ *   - Timing has to be handled by user app
+ *   - SYNC mode is not available
+ * - RPDO
+ *   - Received data by default is not copied to OD. This means that SDO
+ *     access will not work. If you need that, you have to synchronise PDO
+ *     and SDO access by yourselve.
+ *
+ * @} */
+//#define RPDO_MANUAL_CONTROL_EXTENSION
+//#define TPDO_MANUAL_CONTROL_EXTENSION
+
 
 /**
  * RPDO communication parameter. The same as record from Object dictionary (index 0x1400+).
@@ -201,8 +231,10 @@ struct CO_RPDO{
     uint8_t             dataLength;
     /** Pointers to 8 data objects, where PDO will be copied */
     uint8_t            *mapPointer[8];
+#ifdef RPDO_MANUAL_CONTROL_EXTENSION
     /** Callback from #CO_RPDO_takeManualControl() */
     void              (*pFuncManualControl)(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message);
+#endif
     /** Variable indicates, if new PDO message received from CAN bus. */
     volatile void      *CANrxNew[2];
     /** 8 data bytes of the received message. */
@@ -227,8 +259,10 @@ typedef struct{
     bool_t              valid;          /**< True, if PDO is enabled and valid */
     /** Data length of the transmitting PDO message. Calculated from mapping */
     uint8_t             dataLength;
+#ifdef TPDO_MANUAL_CONTROL_EXTENSION
     /** Info for #CO_TPDO_isManualControl() */
     bool_t              manualControl;
+#endif
     /** If application set this flag, PDO will be later sent by
     function CO_TPDO_process(). Depends on transmission type. */
     uint8_t             sendRequest;
@@ -295,7 +329,7 @@ CO_ReturnError_t CO_RPDO_init(
         CO_CANmodule_t         *CANdevRx,
         uint16_t                CANdevRxIdx);
 
-
+#ifdef RPDO_MANUAL_CONTROL_EXTENSION
 /**
  * Request manual control of RPDO from application
  *
@@ -324,7 +358,9 @@ CO_ReturnError_t CO_RPDO_takeManualControl(
  * @retval False PDO transmission is handled by stack
  */
 bool_t CO_RPDO_isManualControl(CO_RPDO_t *RPDO);
-
+#else
+#define CO_RPDO_isManualControl(v) (false)
+#endif
 
 /**
  * Initialize TPDO object.
@@ -370,7 +406,7 @@ CO_ReturnError_t CO_TPDO_init(
         CO_CANmodule_t         *CANdevTx,
         uint16_t                CANdevTxIdx);
 
-
+#ifdef TPDO_MANUAL_CONTROL_EXTENSION
 /**
  * Request manual control of #CO_TPDO_process() and  #CO_TPDOsend() function
  * from application
@@ -394,6 +430,9 @@ CO_ReturnError_t CO_TPDO_takeManualControl(
  * @retval False PDO transmission is handled by stack
  */
 bool_t CO_TPDO_isManualControl(CO_TPDO_t *TPDO);
+#else
+#define CO_TPDO_isManualControl(v) (false)
+#endif
 
 
 /**
