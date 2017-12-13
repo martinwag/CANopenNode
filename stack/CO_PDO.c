@@ -70,6 +70,15 @@ static void CO_PDO_receive(void *object, const CO_CANrxMsg_t *msg){
         (*RPDO->operatingState == CO_NMT_OPERATIONAL) &&
         (msg->DLC >= RPDO->dataLength))
     {
+#ifdef RPDO_MANUAL_CONTROL_EXTENSION
+        if (CO_RPDO_isManualControl(RPDO)) {
+            /* RPDO is handled by user application */
+            if (RPDO->pFuncManualControl!=NULL) {
+                RPDO->pFuncManualControl(RPDO->object, RPDO, msg);
+            }
+        }
+        else
+#endif
         if(RPDO->synchronous && RPDO->SYNC->CANrxToggle) {
             /* copy data into second buffer and set 'new message' flag */
             RPDO->CANrxData[1][0] = msg->data[0];
@@ -556,6 +565,9 @@ static CO_SDO_abortCode_t CO_ODF_TPDOcom(CO_ODF_arg_t *ODF_arg){
     else if(ODF_arg->subIndex == 2){   /* Transmission_type */
         uint8_t *value = (uint8_t*) ODF_arg->data;
 
+        /* sync not permitted in manual mode. See #CO_TPDO_takeManualControl() */
+        if(CO_TPDO_isManualControl(TPDO) && *value >= 0 && *value <= 240)
+            return CO_SDO_AB_INVALID_VALUE;  /* Invalid value for parameter (download only). */
         /* values from 241...253 are not valid */
         if(*value >= 241 && *value <= 253)
             return CO_SDO_AB_INVALID_VALUE;  /* Invalid value for parameter (download only). */
@@ -750,7 +762,9 @@ CO_ReturnError_t CO_RPDO_init(
     RPDO->SDO = SDO;
     RPDO->SYNC = SYNC;
     RPDO->RPDOCommPar = RPDOCommPar;
+    RPDO->idx_RPDOCommPar = idx_RPDOCommPar;
     RPDO->RPDOMapPar = RPDOMapPar;
+    RPDO->idx_RPDOMapPar = idx_RPDOMapPar;
     RPDO->operatingState = operatingState;
     RPDO->nodeId = nodeId;
     RPDO->defaultCOB_ID = defaultCOB_ID;
@@ -771,6 +785,32 @@ CO_ReturnError_t CO_RPDO_init(
     return CO_ERROR_NO;
 }
 
+#ifdef RPDO_MANUAL_CONTROL_EXTENSION
+/******************************************************************************/
+CO_ReturnError_t CO_RPDO_takeManualControl(
+        CO_RPDO_t              *RPDO,
+        bool_t                  take,
+        void                   *object,
+        void                  (*pFunct)(void *object, const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message))
+{
+    if(RPDO==NULL || (take && pFunct==NULL)) {
+        return CO_ERROR_ILLEGAL_ARGUMENT;
+    }
+    RPDO->pFuncManualControl = pFunct;
+    RPDO->object = object;
+    return CO_ERROR_NO;
+}
+
+
+/******************************************************************************/
+bool_t CO_RPDO_isManualControl(CO_RPDO_t *RPDO)
+{
+    if (RPDO!=NULL && RPDO->pFuncManualControl!=NULL) {
+        return true;
+    }
+    return false;
+}
+#endif
 
 /******************************************************************************/
 CO_ReturnError_t CO_TPDO_init(
@@ -798,11 +838,16 @@ CO_ReturnError_t CO_TPDO_init(
     TPDO->em = em;
     TPDO->SDO = SDO;
     TPDO->TPDOCommPar = TPDOCommPar;
+    TPDO->idx_TPDOCommPar = idx_TPDOCommPar;
     TPDO->TPDOMapPar = TPDOMapPar;
+    TPDO->idx_TPDOMapPar = idx_TPDOMapPar;
     TPDO->operatingState = operatingState;
     TPDO->nodeId = nodeId;
     TPDO->defaultCOB_ID = defaultCOB_ID;
     TPDO->restrictionFlags = restrictionFlags;
+#ifdef TPDO_MANUAL_CONTROL_EXTENSION
+    TPDO->manualControl = false;
+#endif
 
     /* Configure Object dictionary entry at index 0x1800+ and 0x1A00+ */
     CO_OD_configure(SDO, idx_TPDOCommPar, CO_ODF_TPDOcom, (void*)TPDO, 0, 0);
@@ -827,6 +872,40 @@ CO_ReturnError_t CO_TPDO_init(
 
     return CO_ERROR_NO;
 }
+
+#ifdef TPDO_MANUAL_CONTROL_EXTENSION
+/******************************************************************************/
+CO_ReturnError_t CO_TPDO_takeManualControl(
+        CO_TPDO_t              *TPDO,
+        bool_t                  take)
+{
+    if(TPDO==NULL) {
+        return CO_ERROR_ILLEGAL_ARGUMENT;
+    }
+
+    TPDO->manualControl = false;
+    if (take) {
+        if (TPDO->TPDOCommPar->transmissionType>=0 &&
+            TPDO->TPDOCommPar->transmissionType<=240) {
+            /* manual only permitted in manufacturer or async mode. Sync mode is
+             * not available because syncing should be done as one step */
+            return CO_ERROR_ILLEGAL_ARGUMENT;
+        }
+        TPDO->manualControl = true;
+    }
+    return CO_ERROR_NO;
+}
+
+
+/******************************************************************************/
+bool_t CO_TPDO_isManualControl(CO_TPDO_t *TPDO)
+{
+    if (TPDO!=NULL) {
+        return TPDO->manualControl;
+    }
+    return false;
+}
+#endif
 
 
 /******************************************************************************/
@@ -855,13 +934,13 @@ uint8_t CO_TPDOisCOS(CO_TPDO_t *TPDO){
 
 //#define TPDO_CALLS_EXTENSION
 /******************************************************************************/
-int16_t CO_TPDOsend(CO_TPDO_t *TPDO){
+CO_ReturnError_t CO_TPDOsend(CO_TPDO_t *TPDO){
     int16_t i;
     uint8_t* pPDOdataByte;
     uint8_t** ppODdataByte;
 
 #ifdef TPDO_CALLS_EXTENSION
-    if(TPDO->SDO->ODExtensions){
+    if( !CO_TPDO_isManualControl(TPDO) && TPDO->SDO->ODExtensions){
         /* for each mapped OD, check mapping to see if an OD extension is available, and call it if it is */
         const uint32_t* pMap = &TPDO->TPDOMapPar->mappedObject1;
         CO_SDO_t *pSDO = TPDO->SDO;
@@ -898,7 +977,7 @@ int16_t CO_TPDOsend(CO_TPDO_t *TPDO){
 
     TPDO->sendRequest = 0;
 
-    return CO_CANsend(TPDO->CANdevTx, TPDO->CANtxBuff);
+    return CO_CANCheckSend(TPDO->CANdevTx, TPDO->CANtxBuff);
 }
 
 //#define RPDO_CALLS_EXTENSION
@@ -967,18 +1046,23 @@ void CO_RPDO_process(CO_RPDO_t *RPDO, bool_t syncWas){
 
 
 /******************************************************************************/
-void CO_TPDO_process(
+CO_ReturnError_t CO_TPDO_process(
         CO_TPDO_t              *TPDO,
         CO_SYNC_t              *SYNC,
         bool_t                  syncWas,
         uint32_t                timeDifference_us)
 {
+    CO_ReturnError_t retval = CO_ERROR_WRONG_NMT_STATE;
+
     if(TPDO->valid && *TPDO->operatingState == CO_NMT_OPERATIONAL){
+        /* return busy when PDO is not ready to send */
+        retval = CO_ERROR_TX_BUSY;
 
         /* Send PDO by application request or by Event timer */
         if(TPDO->TPDOCommPar->transmissionType >= 253){
             if(TPDO->inhibitTimer == 0 && (TPDO->sendRequest || (TPDO->TPDOCommPar->eventTimer && TPDO->eventTimer == 0))){
-                if(CO_TPDOsend(TPDO) == CO_ERROR_NO){
+                retval = CO_TPDOsend(TPDO);
+                if(retval == CO_ERROR_NO){
                     /* successfully sent */
                     TPDO->inhibitTimer = ((uint32_t) TPDO->TPDOCommPar->inhibitTime) * 100;
                     TPDO->eventTimer = ((uint32_t) TPDO->TPDOCommPar->eventTimer) * 1000;
@@ -990,7 +1074,7 @@ void CO_TPDO_process(
         else if(SYNC && syncWas){
             /* send synchronous acyclic PDO */
             if(TPDO->TPDOCommPar->transmissionType == 0){
-                if(TPDO->sendRequest) CO_TPDOsend(TPDO);
+                if(TPDO->sendRequest) retval = CO_TPDOsend(TPDO);
             }
             /* send synchronous cyclic PDO */
             else{
@@ -1005,13 +1089,13 @@ void CO_TPDO_process(
                 if(TPDO->syncCounter == 254){
                     if(SYNC->counter == TPDO->TPDOCommPar->SYNCStartValue){
                         TPDO->syncCounter = TPDO->TPDOCommPar->transmissionType;
-                        CO_TPDOsend(TPDO);
+                        retval = CO_TPDOsend(TPDO);
                     }
                 }
                 /* Send PDO after every N-th Sync */
                 else if(--TPDO->syncCounter == 0){
                     TPDO->syncCounter = TPDO->TPDOCommPar->transmissionType;
-                    CO_TPDOsend(TPDO);
+                    retval = CO_TPDOsend(TPDO);
                 }
             }
         }
@@ -1026,4 +1110,6 @@ void CO_TPDO_process(
     /* update timers */
     TPDO->inhibitTimer = (TPDO->inhibitTimer > timeDifference_us) ? (TPDO->inhibitTimer - timeDifference_us) : 0;
     TPDO->eventTimer = (TPDO->eventTimer > timeDifference_us) ? (TPDO->eventTimer - timeDifference_us) : 0;
+
+    return retval;
 }

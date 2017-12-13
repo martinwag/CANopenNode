@@ -243,6 +243,24 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer){
 
 
 /******************************************************************************/
+CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
+{
+  /* Check Queue level before sending. In the driver template, there is one
+   * buffer per message type, so this function maps directly to CO_CANsend().
+   * In other devices (e.g. Linux) this function has to ensure that the send
+   * queue is never completely filled up, but some elements remain for important
+   * stuff (e.g. emergency message).
+   *
+   * if (QueueRemaining <=1 ||
+   *     (QueueRemaining < (QueueLength / 2))) {
+   *    return CO_ERROR_TX_BUSY;
+   * }
+   */
+  return CO_CANsend(CANmodule, buffer);
+}
+
+
+/******************************************************************************/
 void CO_CANclearPendingSyncPDOs(CO_CANmodule_t *CANmodule){
     uint32_t tpdoDeleted = 0U;
 
