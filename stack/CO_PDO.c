@@ -70,7 +70,13 @@ static void CO_PDO_receive(void *object, const CO_CANrxMsg_t *msg){
         (*RPDO->operatingState == CO_NMT_OPERATIONAL) &&
         (msg->DLC >= RPDO->dataLength))
     {
-        if(RPDO->synchronous && RPDO->SYNC->CANrxToggle) {
+        if (CO_RPDO_isManualControl(RPDO)) {
+            /* RPDO is handled by user application */
+            if (RPDO->pFuncManualControl!=NULL) {
+                RPDO->pFuncManualControl(RPDO, msg);
+            }
+        }
+        else if(RPDO->synchronous && RPDO->SYNC->CANrxToggle) {
             /* copy data into second buffer and set 'new message' flag */
             RPDO->CANrxData[1][0] = msg->data[0];
             RPDO->CANrxData[1][1] = msg->data[1];
@@ -559,7 +565,7 @@ static CO_SDO_abortCode_t CO_ODF_TPDOcom(CO_ODF_arg_t *ODF_arg){
         uint8_t *value = (uint8_t*) ODF_arg->data;
 
         /* sync not permitted in manual mode. See #CO_TPDO_takeManualControl() */
-        if(TPDO->manualControl && *value >= 0 && *value <= 240)
+        if(CO_TPDO_isManualControl(TPDO) && *value >= 0 && *value <= 240)
             return CO_SDO_AB_INVALID_VALUE;  /* Invalid value for parameter (download only). */
         /* values from 241...253 are not valid */
         if(*value >= 241 && *value <= 253)
@@ -779,6 +785,30 @@ CO_ReturnError_t CO_RPDO_init(
 
 
 /******************************************************************************/
+CO_ReturnError_t CO_RPDO_takeManualControl(
+        CO_RPDO_t              *RPDO,
+        bool_t                  take,
+        void                  (*pFunct)(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message))
+{
+    if(RPDO==NULL || pFunct==NULL) {
+        return CO_ERROR_ILLEGAL_ARGUMENT;
+    }
+    RPDO->pFuncManualControl = pFunct;
+    return CO_ERROR_NO;
+}
+
+
+/******************************************************************************/
+bool_t CO_RPDO_isManualControl(CO_RPDO_t *RPDO)
+{
+    if (RPDO!=NULL && RPDO->pFuncManualControl!=NULL) {
+        return true;
+    }
+    return false;
+}
+
+
+/******************************************************************************/
 CO_ReturnError_t CO_TPDO_init(
         CO_TPDO_t              *TPDO,
         CO_EM_t                *em,
@@ -835,6 +865,7 @@ CO_ReturnError_t CO_TPDO_init(
     return CO_ERROR_NO;
 }
 
+
 /******************************************************************************/
 CO_ReturnError_t CO_TPDO_takeManualControl(
         CO_TPDO_t              *TPDO,
@@ -856,11 +887,16 @@ CO_ReturnError_t CO_TPDO_takeManualControl(
     return CO_ERROR_NO;
 }
 
+
 /******************************************************************************/
 bool_t CO_TPDO_isManualControl(CO_TPDO_t *TPDO)
 {
-  return TPDO->manualControl;
+    if (TPDO!=NULL) {
+        return TPDO->manualControl;
+    }
+    return false;
 }
+
 
 /******************************************************************************/
 uint8_t CO_TPDOisCOS(CO_TPDO_t *TPDO){

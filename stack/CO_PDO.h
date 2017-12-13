@@ -182,7 +182,8 @@ typedef struct{
 /**
  * RPDO object.
  */
-typedef struct{
+typedef struct CO_RPDO CO_RPDO_t;
+struct CO_RPDO{
     CO_EM_t            *em;             /**< From CO_RPDO_init() */
     CO_SDO_t           *SDO;            /**< From CO_RPDO_init() */
     CO_SYNC_t          *SYNC;           /**< From CO_RPDO_init() */
@@ -200,13 +201,15 @@ typedef struct{
     uint8_t             dataLength;
     /** Pointers to 8 data objects, where PDO will be copied */
     uint8_t            *mapPointer[8];
+    /** Callback from #CO_RPDO_takeManualControl() */
+    void              (*pFuncManualControl)(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message);
     /** Variable indicates, if new PDO message received from CAN bus. */
     volatile void      *CANrxNew[2];
     /** 8 data bytes of the received message. */
     uint8_t             CANrxData[2][8];
     CO_CANmodule_t     *CANdevRx;       /**< From CO_RPDO_init() */
     uint16_t            CANdevRxIdx;    /**< From CO_RPDO_init() */
-}CO_RPDO_t;
+};
 
 
 /**
@@ -294,6 +297,36 @@ CO_ReturnError_t CO_RPDO_init(
 
 
 /**
+ * Request manual control of RPDO from application
+ *
+ * This disconnects the RPDO from the object dictionary and instead calls
+ * the given callback function on RPDO reception.
+ *
+ * @remark Depending on the CAN driver implementation, this function is called
+ * inside an ISR
+ *
+ * @param RPDO This object.
+ * @param take True = manual, False = automatic
+ * @param pFunct Rx callback function
+ * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
+ */
+CO_ReturnError_t CO_RPDO_takeManualControl(
+        CO_RPDO_t              *RPDO,
+        bool_t                  take,
+        void                  (*pFunct)(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message));
+
+
+/**
+ * Checks if manual control is requested for a RPDO
+ *
+ * @param RPDO This object.
+ * @retval True PDO transmission is handled by user application
+ * @retval False PDO transmission is handled by stack
+ */
+bool_t CO_RPDO_isManualControl(CO_RPDO_t *RPDO);
+
+
+/**
  * Initialize TPDO object.
  *
  * Function must be called in the communication reset section.
@@ -339,7 +372,8 @@ CO_ReturnError_t CO_TPDO_init(
 
 
 /**
- * Request manual control of #CO_TPDO_process() and function from application
+ * Request manual control of #CO_TPDO_process() and  #CO_TPDOsend() function
+ * from application
  *
  * This is only allowed in transmission type 254/255
  *
