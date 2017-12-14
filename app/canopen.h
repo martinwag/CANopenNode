@@ -211,6 +211,9 @@ class Canopen: public Canopen_errors {
      *
      * @remark Inhibit Time und Event Timer werden ignoriert!
      *
+     * @remark soll eine Nachricht atomar ge"andert und versendet werden,
+     * so muss das OD per #od_lock() gesichert sein.
+     *
      * @param id ID von #tpdo_take_control()
      * @return CO_ERROR_NO wenn kein Fehler aufgetreten ist
      */
