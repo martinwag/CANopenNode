@@ -469,6 +469,22 @@ CO_CANtx_t *CO_CANtxBufferInit(
  */
 CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer);
 
+/**
+ * The same as #CO_CANsend(), but ensures that there is enough space remaining
+ * in the driver for more important messages.
+ *
+ * The default threshold is 50%, or at least 1 message buffer. If sending
+ * would violate those limits, #CO_ERROR_TX_OVERFLOW is returned and the
+ * message will not be sent.
+ *
+ * @param CANmodule This object.
+ * @param buffer Pointer to transmit buffer, returned by CO_CANtxBufferInit().
+ * Data bytes must be written in buffer before function call.
+ *
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_TX_OVERFLOW or
+ * CO_ERROR_TX_PDO_WINDOW (Synchronous TPDO is outside window).
+ */
+CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer);
 
 /**
  * Clear all synchronous TPDOs from CAN module transmit buffers.
