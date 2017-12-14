@@ -764,7 +764,9 @@ CO_ReturnError_t CO_RPDO_init(
     RPDO->SDO = SDO;
     RPDO->SYNC = SYNC;
     RPDO->RPDOCommPar = RPDOCommPar;
+    RPDO->idx_RPDOCommPar = idx_RPDOCommPar;
     RPDO->RPDOMapPar = RPDOMapPar;
+    RPDO->idx_RPDOMapPar = idx_RPDOMapPar;
     RPDO->operatingState = operatingState;
     RPDO->nodeId = nodeId;
     RPDO->defaultCOB_ID = defaultCOB_ID;
@@ -837,7 +839,9 @@ CO_ReturnError_t CO_TPDO_init(
     TPDO->em = em;
     TPDO->SDO = SDO;
     TPDO->TPDOCommPar = TPDOCommPar;
+    TPDO->idx_TPDOCommPar = idx_TPDOCommPar;
     TPDO->TPDOMapPar = TPDOMapPar;
+    TPDO->idx_TPDOMapPar = idx_TPDOMapPar;
     TPDO->operatingState = operatingState;
     TPDO->nodeId = nodeId;
     TPDO->defaultCOB_ID = defaultCOB_ID;

@@ -330,6 +330,34 @@ void CO_process_TPDO(
         bool_t                  syncWas,
         uint32_t                timeDifference_us);
 
+
+/**
+ * Check if a RPDO exists in the OD. If so, a pointer to the corresponding
+ * object is returned
+ *
+ * @param CO This object.
+ * @param rpdoComParIndex OD Index of RPDO communication parameters object
+ * @retval NULL index not part of OD
+ * @retval !=NULL RPDO object
+ */
+CO_RPDO_t *CO_get_RPDO(
+        CO_t                   *CO,
+        u16                     rpdoComParIndex);
+
+
+/**
+ * Check if a TPDO exists in the OD. If so, a pointer to the corresponding
+ * object is returned
+ *
+ * @param CO This object.
+ * @param tpdoComParIndex OD Index of TPDO communication parameters object
+ * @retval NULL index not part of OD
+ * @retval !=NULL TPDO object
+ */
+CO_TPDO_t *CO_get_TPDO(
+        CO_t                   *CO,
+        u16                     tpdoComParIndex);
+
 #ifdef __cplusplus
 }
 #endif /*__cplusplus*/

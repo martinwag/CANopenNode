@@ -854,3 +854,43 @@ void CO_process_TPDO(
         CO_TPDO_process(CO->TPDO[i], CO->SYNC, syncWas, timeDifference_us);
     }
 }
+
+
+/******************************************************************************/
+CO_RPDO_t* CO_get_RPDO(
+        CO_t                   *CO,
+        u16                     rpdoComParIndex)
+{
+    int16_t i;
+
+    if (CO==NULL || CO->RPDO==NULL) {
+        return NULL;
+    }
+
+    for(i=0; i<CO_NO_RPDO; i++){
+        if (CO->RPDO[i]->idx_RPDOCommPar == rpdoComParIndex) {
+            return CO->RPDO[i];
+        }
+    }
+    return NULL;
+}
+
+
+/******************************************************************************/
+CO_TPDO_t* CO_get_TPDO(
+        CO_t                   *CO,
+        u16                     tpdoComParIndex)
+{
+  int16_t i;
+
+  if (CO==NULL || CO->TPDO==NULL) {
+      return NULL;
+  }
+
+  for(i=0; i<CO_NO_TPDO; i++){
+      if (CO->TPDO[i]->idx_TPDOCommPar == tpdoComParIndex) {
+          return CO->TPDO[i];
+      }
+  }
+  return NULL;
+}
