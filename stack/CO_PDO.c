@@ -936,13 +936,13 @@ uint8_t CO_TPDOisCOS(CO_TPDO_t *TPDO){
 
 //#define TPDO_CALLS_EXTENSION
 /******************************************************************************/
-int16_t CO_TPDOsend(CO_TPDO_t *TPDO){
+CO_ReturnError_t CO_TPDOsend(CO_TPDO_t *TPDO){
     int16_t i;
     uint8_t* pPDOdataByte;
     uint8_t** ppODdataByte;
 
 #ifdef TPDO_CALLS_EXTENSION
-    if(TPDO->SDO->ODExtensions){
+    if( !CO_TPDO_isManualControl(TPDO) && TPDO->SDO->ODExtensions){
         /* for each mapped OD, check mapping to see if an OD extension is available, and call it if it is */
         const uint32_t* pMap = &TPDO->TPDOMapPar->mappedObject1;
         CO_SDO_t *pSDO = TPDO->SDO;
@@ -980,7 +980,7 @@ int16_t CO_TPDOsend(CO_TPDO_t *TPDO){
 
     TPDO->sendRequest = 0;
 
-    return CO_CANsend(TPDO->CANdevTx, TPDO->CANtxBuff);
+    return CO_CANCheckSend(TPDO->CANdevTx, TPDO->CANtxBuff);
 }
 
 //#define RPDO_CALLS_EXTENSION
