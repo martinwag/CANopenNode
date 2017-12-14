@@ -102,8 +102,8 @@ extern "C" {
  *   - SYNC mode is not available
  * - RPDO
  *   - Received data by default is not copied to OD. This means that SDO
- *     access will not work. If you need that, you have to synchronise PDO
- *     and SDO access by yourselve.
+ *     access will not work. If you need that, you have to synchronise the
+ *     PDO and the mapped objects by yourselve.
  *
  * @} */
 //#define RPDO_MANUAL_CONTROL_EXTENSION
@@ -235,7 +235,8 @@ struct CO_RPDO{
     uint8_t            *mapPointer[8];
 #ifdef RPDO_MANUAL_CONTROL_EXTENSION
     /** Callback from #CO_RPDO_takeManualControl() */
-    void              (*pFuncManualControl)(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message);
+    void              (*pFuncManualControl)(void *object, const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message);
+    void               *object;         /**< Pointer to object */
 #endif
     /** Variable indicates, if new PDO message received from CAN bus. */
     volatile void      *CANrxNew[2];
@@ -345,13 +346,15 @@ CO_ReturnError_t CO_RPDO_init(
  *
  * @param RPDO This object.
  * @param take True = manual, False = automatic
+ * @param object Pointer to object, which will be passed to callback. Can be NULL
  * @param pFunct Rx callback function
  * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
  */
 CO_ReturnError_t CO_RPDO_takeManualControl(
         CO_RPDO_t              *RPDO,
         bool_t                  take,
-        void                  (*pFunct)(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message));
+        void                   *object,
+        void                  (*pFunct)(void *object, const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message));
 
 
 /**
@@ -412,8 +415,7 @@ CO_ReturnError_t CO_TPDO_init(
 
 #ifdef TPDO_MANUAL_CONTROL_EXTENSION
 /**
- * Request manual control of #CO_TPDO_process() and  #CO_TPDOsend() function
- * from application
+ * Request manual control of #CO_TPDO_process() function from application
  *
  * This is only allowed in transmission type 254/255
  *

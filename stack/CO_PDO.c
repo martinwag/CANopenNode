@@ -74,7 +74,7 @@ static void CO_PDO_receive(void *object, const CO_CANrxMsg_t *msg){
         if (CO_RPDO_isManualControl(RPDO)) {
             /* RPDO is handled by user application */
             if (RPDO->pFuncManualControl!=NULL) {
-                RPDO->pFuncManualControl(RPDO, msg);
+                RPDO->pFuncManualControl(RPDO->object, RPDO, msg);
             }
         }
         else
@@ -793,12 +793,14 @@ CO_ReturnError_t CO_RPDO_init(
 CO_ReturnError_t CO_RPDO_takeManualControl(
         CO_RPDO_t              *RPDO,
         bool_t                  take,
-        void                  (*pFunct)(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message))
+        void                   *object,
+        void                  (*pFunct)(void *object, const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message))
 {
-    if(RPDO==NULL || pFunct==NULL) {
+    if(RPDO==NULL || (take && pFunct==NULL)) {
         return CO_ERROR_ILLEGAL_ARGUMENT;
     }
     RPDO->pFuncManualControl = pFunct;
+    RPDO->object = object;
     return CO_ERROR_NO;
 }
 
