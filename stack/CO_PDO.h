@@ -492,12 +492,17 @@ void CO_RPDO_process(CO_RPDO_t *RPDO, bool_t syncWas);
  * TPDO if necessary. If Change of State needs to be detected, function
  * CO_TPDOisCOS() must be called before.
  *
+ * The return value is informative only. It indicates if a TPDO CAN bus message
+ * was created inside this function. This information _might_ be useful if
+ * in #TPDO_MANUAL_CONTROL_EXTENSION mode.
+ *
  * @param TPDO This object.
  * @param SYNC SYNC object. Ignored if NULL.
  * @param syncWas True, if CANopen SYNC message was just received or transmitted.
  * @param timeDifference_us Time difference from previous function call in [microseconds].
+ * @return Same as CO_CANsend() or #CO_ERROR_WRONG_NMT_STATE if not in NMT Operational
  */
-void CO_TPDO_process(
+CO_ReturnError_t CO_TPDO_process(
         CO_TPDO_t              *TPDO,
         CO_SYNC_t              *SYNC,
         bool_t                  syncWas,

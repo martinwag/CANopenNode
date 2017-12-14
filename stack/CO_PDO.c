@@ -1053,18 +1053,23 @@ void CO_RPDO_process(CO_RPDO_t *RPDO, bool_t syncWas){
 
 
 /******************************************************************************/
-void CO_TPDO_process(
+CO_ReturnError_t CO_TPDO_process(
         CO_TPDO_t              *TPDO,
         CO_SYNC_t              *SYNC,
         bool_t                  syncWas,
         uint32_t                timeDifference_us)
 {
+    CO_ReturnError_t retval = CO_ERROR_WRONG_NMT_STATE;
+
     if(TPDO->valid && *TPDO->operatingState == CO_NMT_OPERATIONAL){
+        /* return busy when PDO is not ready to send */
+        retval = CO_ERROR_TX_BUSY;
 
         /* Send PDO by application request or by Event timer */
         if(TPDO->TPDOCommPar->transmissionType >= 253){
             if(TPDO->inhibitTimer == 0 && (TPDO->sendRequest || (TPDO->TPDOCommPar->eventTimer && TPDO->eventTimer == 0))){
-                if(CO_TPDOsend(TPDO) == CO_ERROR_NO){
+                retval = CO_TPDOsend(TPDO);
+                if(retval == CO_ERROR_NO){
                     /* successfully sent */
                     TPDO->inhibitTimer = ((uint32_t) TPDO->TPDOCommPar->inhibitTime) * 100;
                     TPDO->eventTimer = ((uint32_t) TPDO->TPDOCommPar->eventTimer) * 1000;
@@ -1076,7 +1081,7 @@ void CO_TPDO_process(
         else if(SYNC && syncWas){
             /* send synchronous acyclic PDO */
             if(TPDO->TPDOCommPar->transmissionType == 0){
-                if(TPDO->sendRequest) CO_TPDOsend(TPDO);
+                if(TPDO->sendRequest) retval = CO_TPDOsend(TPDO);
             }
             /* send synchronous cyclic PDO */
             else{
@@ -1091,13 +1096,13 @@ void CO_TPDO_process(
                 if(TPDO->syncCounter == 254){
                     if(SYNC->counter == TPDO->TPDOCommPar->SYNCStartValue){
                         TPDO->syncCounter = TPDO->TPDOCommPar->transmissionType;
-                        CO_TPDOsend(TPDO);
+                        retval = CO_TPDOsend(TPDO);
                     }
                 }
                 /* Send PDO after every N-th Sync */
                 else if(--TPDO->syncCounter == 0){
                     TPDO->syncCounter = TPDO->TPDOCommPar->transmissionType;
-                    CO_TPDOsend(TPDO);
+                    retval = CO_TPDOsend(TPDO);
                 }
             }
         }
@@ -1112,4 +1117,6 @@ void CO_TPDO_process(
     /* update timers */
     TPDO->inhibitTimer = (TPDO->inhibitTimer > timeDifference_us) ? (TPDO->inhibitTimer - timeDifference_us) : 0;
     TPDO->eventTimer = (TPDO->eventTimer > timeDifference_us) ? (TPDO->eventTimer - timeDifference_us) : 0;
+
+    return retval;
 }
