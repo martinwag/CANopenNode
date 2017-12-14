@@ -1185,7 +1185,7 @@ CO_ReturnError_t Canopen::tpdo_send(u16 id)
   tpdo_called = now;
 
   p_tpdo->sendRequest = true;
-  return CO_TPDO_process(p_tpdo, nullptr, false, difference_us);
+  return CO_TPDO_process(p_tpdo, nullptr, false, difference_us); //nicht zyklisch -> kein Heartbeat!!
 }
 
 CO_ReturnError_t Canopen::rpdo_take_control(u16 rpdo_com_param_index,
