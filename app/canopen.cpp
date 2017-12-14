@@ -753,6 +753,19 @@ bool Canopen::store_lss_config_callback(uint8_t nid, uint16_t bit_rate)
 }
 
 /**
+ * empfangenen RPDO an Anwendung weitergeben
+ *
+ * @param rpdo RPDO Objekt
+ * @param message empfangener PDO
+ */
+void Canopen::rpdo_callback(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message)
+{
+  if (p_rpdo != nullptr) {
+    p_rpdo(rpdo->idx_RPDOCommPar, message->data, message->DLC);
+  }
+}
+
+/**
  * Zeitkritische CANopen Abarbeitung
  */
 void Canopen::timer_rx_thread(void)
@@ -1135,6 +1148,84 @@ void Canopen::nmt_event(QueueHandle_t event_queue)
 
 /** @}*/
 
+/**
+ * @defgroup PDOs
+ */
+CO_ReturnError_t Canopen::tpdo_take_control(u16 tpdo_com_param_index)
+{
+  CO_ReturnError_t result;
+
+  if (p_tpdo != nullptr) {
+    return CO_ERROR_OUT_OF_MEMORY; //nur 1 Eintrag m"oglich
+  }
+  p_tpdo = CO_get_TPDO(CO, tpdo_com_param_index);
+  if (p_tpdo == nullptr) {
+    return CO_ERROR_PARAMETERS;
+  }
+  result = CO_TPDO_takeManualControl(p_tpdo, true);
+  return result;
+}
+
+void Canopen::tpdo_release_control(u16 id)
+{
+  (void)CO_TPDO_takeManualControl(p_tpdo, false);
+  p_tpdo = nullptr;
+}
+
+CO_ReturnError_t Canopen::tpdo_send(u16 id)
+{
+  TickType_t now;
+  TickType_t difference_us;
+
+  if (p_tpdo == nullptr) {
+    return CO_ERROR_PARAMETERS;
+  }
+  now = xTaskGetTickCount();
+  difference_us = (now - tpdo_called) * 1000;
+  tpdo_called = now;
+
+  p_tpdo->sendRequest = true;
+  return CO_TPDO_process(p_tpdo, nullptr, false, difference_us);
+}
+
+CO_ReturnError_t Canopen::rpdo_take_control(u16 rpdo_com_param_index,
+    void (*p)(u16 id, const u8* p_data, u8 count))
+{
+  CO_RPDO_t *p_pdo;
+  CO_ReturnError_t result;
+
+  if (p == nullptr) {
+    return CO_ERROR_PARAMETERS;
+  }
+  if (p_rpdo != nullptr) {
+    return CO_ERROR_OUT_OF_MEMORY; //nur 1 Eintrag m"oglich
+  }
+
+  p_pdo = CO_get_RPDO(CO, rpdo_com_param_index);
+  if (p_pdo == nullptr) {
+    return CO_ERROR_PARAMETERS;
+  }
+  p_rpdo = p;
+  result = CO_RPDO_takeManualControl(p_pdo, true, this, rpdo_callback_wrapper);
+  return result;
+}
+
+void Canopen::rpdo_release_control(u16 id)
+{
+  CO_RPDO_t *p_pdo;
+
+  if (p_rpdo == nullptr) {
+    return;
+  }
+  p_pdo = CO_get_RPDO(CO, id);
+  if (p_pdo == nullptr) {
+    return;
+  }
+  (void)CO_RPDO_takeManualControl(p_pdo, true, nullptr, nullptr);
+  p_rpdo = nullptr;
+}
+
+/** @}*/
 
 /**
  * Einige Werte im OD werden zur Compile Time / Startup Time generiert. Diese
@@ -1408,7 +1499,7 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
   }
 
 #ifndef UNIT_TEST
-  if (this->once != true) {
+  if (once != true) {
     (void)FreeRTOS_CLIRegisterCommand(&terminal);
     (void)daisy_init(MODTYPE_HW_TEMPLATE, daisychain_event_callback_wrapper, this);
   }
@@ -1421,8 +1512,8 @@ CO_ReturnError_t Canopen::init(u8 nid, u32 interval)
     return co_result;
   }
 
-  if (this->once != true) {
-    this->once = true;
+  if (once != true) {
+    once = true;
     OD_powerOnCounter ++;
     (void)storage.save(Canopen_storage::RUNTIME);
   }
@@ -1440,9 +1531,10 @@ void Canopen::deinit(void)
   }
 
   CO_delete(CAN_MODULE_A);
-
-  this->reset = CO_RESET_NOT;
-  *this->p_active_nid = 0;
+  reset = CO_RESET_NOT;
+  p_tpdo = nullptr;
+  p_rpdo = nullptr;
+  *p_active_nid = 0;
 }
 
 void Canopen::process(void)
@@ -1565,6 +1657,11 @@ bool_t Canopen::store_lss_config_callback_wrapper(void *p_object, uint8_t nid, u
   return reinterpret_cast<Canopen*>(p_object)->store_lss_config_callback(nid, bit_rate);
 }
 
+void Canopen::rpdo_callback_wrapper(void *p_object, const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message)
+{
+  return reinterpret_cast<Canopen*>(p_object)->rpdo_callback(rpdo, message);
+}
+
 CO_SDO_abortCode_t Canopen::store_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
   return reinterpret_cast<Canopen*>(p_odf_arg->object)->store_parameters_callback(p_odf_arg);
@@ -1604,7 +1701,6 @@ CO_SDO_abortCode_t Canopen::daisychain_callback_wrapper(CO_ODF_arg_t *p_odf_arg)
 {
   return reinterpret_cast<Canopen*>(p_odf_arg->object)->daisychain_callback(p_odf_arg);
 }
-
 
 /**
 * @} @}

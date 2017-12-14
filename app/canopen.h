@@ -39,6 +39,12 @@ class Canopen: public Canopen_errors {
     u32 worker_interval;              /*!< CO Thread Intervall */
     static QueueHandle_t nmt_event_queue; /*!< per <nmt_event()> eingetragene Queue */
     bool once;                        /*!< Flag Erststart */
+    /* PDO in Anwendung f"ur PSE Stack
+     * Einfachste Implementierung, solange nur eine Instanz notwendig ist.
+     * Falls mehrere notwendig sein sollten, Ablage z.B. in library-asotab */
+    CO_TPDO_t *p_tpdo = nullptr;
+    TickType_t tpdo_called = 0;
+    void (*p_rpdo)(u16 id, const u8* p_data, u8 count);
 
     /*1010*/CO_SDO_abortCode_t store_parameters_callback(CO_ODF_arg_t *p_odf_arg);
     /*1011*/CO_SDO_abortCode_t restore_default_parameters_callback(CO_ODF_arg_t *p_odf_arg);
@@ -70,6 +76,7 @@ class Canopen: public Canopen_errors {
 
     void daisychain_event_callback(void);
     bool store_lss_config_callback(uint8_t nid, uint16_t bitRate);
+    void rpdo_callback(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message);
 
     volatile bool timer_rx_suspend;
     TaskHandle_t timer_rx_handle;
@@ -78,7 +85,7 @@ class Canopen: public Canopen_errors {
   public:
 
     /**
-     * @defgroup Zugriffsfunktionen f"ur Objektverzeichnis
+     * @defgroup OD Zugriffsfunktionen f"ur Objektverzeichnis
      * @{
      */
 
@@ -180,7 +187,62 @@ class Canopen: public Canopen_errors {
     /** @}*/
 
     /**
-     * @defgroup Zugriffsfunktionen auf CANopen Emergency Funktionen.
+     * @defgroup PDO Zugriffsfunktionen f"ur manuelles PDO Handling
+     * @{
+     */
+
+    /**
+     * Manuelle TPDO Steuerung aktivieren
+     *
+     * @param tpdo_com_param_index Eintrag des zugeh"origen TPDO communication parameter
+     * @return CO_ERROR_NO wenn erfolgreich
+     */
+    CO_ReturnError_t tpdo_take_control(u16 tpdo_com_param_index);
+
+    /**
+     * Manuelle TPDO Steuerung deaktivieren
+     *
+     * @param id ID wie in #tpdo_take_control()
+     */
+    void tpdo_release_control(u16 id);
+
+    /**
+     * TPDO versenden
+     *
+     * @remark Inhibit Time und Event Timer werden ignoriert!
+     *
+     * @param id ID von #tpdo_take_control()
+     * @return CO_ERROR_NO wenn kein Fehler aufgetreten ist
+     */
+    CO_ReturnError_t tpdo_send(u16 id);
+
+    /**
+     * Manuelle RPDO Steuerung aktivieren
+     *
+     * @remark Auf die in diesen PDO gemappten OD Eintr"age kann nicht mehr
+     * per SDO zugegriffen werden!
+     *
+     * @remark Innerhalb der Callbackfunktion ist das OD bereits per #od_lock()
+     * gesichert.
+     *
+     * @param tpdo_com_param_index Eintrag des zugeh"origen RPDO communication parameter
+     * @param p Callback RPDO empfangen
+     * @return CO_ERROR_NO wenn kein Fehler aufgetreten ist
+     */
+    CO_ReturnError_t rpdo_take_control(u16 rpdo_com_param_index,
+        void (*p)(u16 id, const u8* p_data, u8 count));
+
+    /**
+     * Manuelle RPDO Steuerung deaktivieren
+     *
+     * @param id ID von #rpdo_take_control()
+     */
+    void rpdo_release_control(u16 id);
+
+    /** @}*/
+
+    /**
+     * @defgroup EMCY Zugriffsfunktionen auf CANopen Emergency Funktionen.
      * @{
      */
 
@@ -222,7 +284,7 @@ class Canopen: public Canopen_errors {
     /** @}*/
 
     /**
-     * @defgroup Zugriffsfunktionen auf Netzwerkmanagement
+     * @defgroup NMT Zugriffsfunktionen auf Netzwerkmanagement
      * @{
      */
 
@@ -292,6 +354,7 @@ class Canopen: public Canopen_errors {
     static void timer_rx_thread_wrapper(void *p);
     static void daisychain_event_callback_wrapper(void *p_object);
     static bool_t store_lss_config_callback_wrapper(void *p_object, uint8_t nid, uint16_t bit_rate);
+    static void rpdo_callback_wrapper(void *p_object, const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message);
     static CO_SDO_abortCode_t store_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t restore_default_parameters_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
     static CO_SDO_abortCode_t cob_id_timestamp_callback_wrapper(CO_ODF_arg_t *p_odf_arg);
