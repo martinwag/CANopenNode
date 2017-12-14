@@ -344,13 +344,13 @@ CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
 {
   can_queue_info_t queue;
 
-  if (CANmodule != NULL) {
+  if (CANmodule == NULL) {
     return CO_ERROR_ILLEGAL_ARGUMENT;
   }
   can_ioctl(CANmodule->driver, CAN_GET_TX_QUEUE_INFO, &queue);
   if (queue.queue_remaining<=1 ||
       (queue.queue_remaining < (queue.queue_length / 2))) { //always round down
-    return CO_ERROR_TX_OVERFLOW;
+    return CO_ERROR_TX_BUSY;
   }
   return CO_CANsend(CANmodule, buffer);
 }
