@@ -752,6 +752,7 @@ bool Canopen::store_lss_config_callback(uint8_t nid, uint16_t bit_rate)
   return false;
 }
 
+#if defined(TPDO_MANUAL_CONTROL_EXTENSION) || defined(RPDO_MANUAL_CONTROL_EXTENSION)
 /**
  * empfangenen RPDO an Anwendung weitergeben
  *
@@ -764,6 +765,11 @@ void Canopen::rpdo_callback(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message)
     p_rpdo(rpdo->idx_RPDOCommPar, message->data, message->DLC);
   }
 }
+#else
+void Canopen::rpdo_callback(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message)
+{
+}
+#endif
 
 /**
  * Zeitkritische CANopen Abarbeitung
@@ -1147,10 +1153,11 @@ void Canopen::nmt_event(QueueHandle_t event_queue)
 }
 
 /** @}*/
-
+#if defined(TPDO_MANUAL_CONTROL_EXTENSION) || defined(RPDO_MANUAL_CONTROL_EXTENSION)
 /**
  * @defgroup PDOs
  */
+
 CO_ReturnError_t Canopen::tpdo_take_control(u16 tpdo_com_param_index)
 {
   CO_ReturnError_t result;
@@ -1162,13 +1169,13 @@ CO_ReturnError_t Canopen::tpdo_take_control(u16 tpdo_com_param_index)
   if (p_tpdo == nullptr) {
     return CO_ERROR_PARAMETERS;
   }
-  result = CO_TPDO_takeManualControl(p_tpdo, true);
+  result = CO_TPDO_takeManualControl(reinterpret_cast<CO_TPDO_t*>(p_tpdo), true);
   return result;
 }
 
 void Canopen::tpdo_release_control(u16 id)
 {
-  (void)CO_TPDO_takeManualControl(p_tpdo, false);
+  (void)CO_TPDO_takeManualControl(reinterpret_cast<CO_TPDO_t*>(p_tpdo), false);
   p_tpdo = nullptr;
 }
 
@@ -1184,8 +1191,8 @@ CO_ReturnError_t Canopen::tpdo_send(u16 id)
   difference_us = (now - tpdo_called) * 1000;
   tpdo_called = now;
 
-  p_tpdo->sendRequest = true;
-  return CO_TPDO_process(p_tpdo, nullptr, false, difference_us); //nicht zyklisch -> kein Heartbeat!!
+  reinterpret_cast<CO_TPDO_t*>(p_tpdo)->sendRequest = true;
+  return CO_TPDO_process(reinterpret_cast<CO_TPDO_t*>(p_tpdo), nullptr, false, difference_us); //nicht zyklisch -> kein Heartbeat!!
 }
 
 CO_ReturnError_t Canopen::rpdo_take_control(u16 rpdo_com_param_index,
@@ -1226,6 +1233,27 @@ void Canopen::rpdo_release_control(u16 id)
 }
 
 /** @}*/
+#else
+CO_ReturnError_t Canopen::tpdo_take_control(u16 tpdo_com_param_index)
+{
+  return CO_ERROR_PARAMETERS;
+}
+void Canopen::tpdo_release_control(u16 id)
+{
+}
+CO_ReturnError_t Canopen::tpdo_send(u16 id)
+{
+  return CO_ERROR_PARAMETERS;
+}
+CO_ReturnError_t Canopen::rpdo_take_control(u16 rpdo_com_param_index,
+    void (*p)(u16 id, const u8* p_data, u8 count))
+{
+  return CO_ERROR_PARAMETERS;
+}
+void Canopen::rpdo_release_control(u16 id)
+{
+}
+#endif
 
 /**
  * Einige Werte im OD werden zur Compile Time / Startup Time generiert. Diese
@@ -1532,9 +1560,9 @@ void Canopen::deinit(void)
 
   CO_delete(CAN_MODULE_A);
   reset = CO_RESET_NOT;
+  *p_active_nid = 0;
   p_tpdo = nullptr;
   p_rpdo = nullptr;
-  *p_active_nid = 0;
 }
 
 void Canopen::process(void)
