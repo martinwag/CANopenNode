@@ -888,7 +888,8 @@ CO_ReturnError_t CO_TPDO_takeManualControl(
 
     TPDO->manualControl = false;
     if (take) {
-        if (TPDO->TPDOCommPar->transmissionType<254){
+        if (TPDO->TPDOCommPar->transmissionType>=0 &&
+            TPDO->TPDOCommPar->transmissionType<=240) {
             /* manual only permitted in manufacturer or async mode. Sync mode is
              * not available because syncing should be done as one step */
             return CO_ERROR_ILLEGAL_ARGUMENT;
