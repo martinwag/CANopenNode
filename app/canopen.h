@@ -42,7 +42,7 @@ class Canopen: public Canopen_errors {
     /* PDO in Anwendung f"ur PSE Stack
      * Einfachste Implementierung, solange nur eine Instanz notwendig ist.
      * Falls mehrere notwendig sein sollten, Ablage z.B. in library-asotab */
-    CO_TPDO_t *p_tpdo = nullptr;
+    void *p_tpdo = nullptr; //Typ CO_TPDO_t
     TickType_t tpdo_called = 0;
     void (*p_rpdo)(u16 id, const u8* p_data, u8 count);
 
