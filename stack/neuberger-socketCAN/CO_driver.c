@@ -342,6 +342,22 @@ CO_CANtx_t *CO_CANtxBufferInit(
 /******************************************************************************/
 CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
 {
+    CO_ReturnError_t err;
+    err = CO_CANCheckSend(CANmodule, buffer)
+    if (err == CO_ERROR_BUSY) {
+        /* send doesn't have "busy" */
+#ifdef USE_EMERGENCY_OBJECT
+        CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, n);
+#endif
+        err = CO_ERROR_TX_OVERFLOW;
+    }
+    return err;
+}
+
+
+/******************************************************************************/
+CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
+{
     CO_ReturnError_t err = CO_ERROR_NO;
     ssize_t n;
     size_t count;
@@ -361,7 +377,7 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
         else if (errno == ENOBUFS) {
             /* socketCAN doesn't support blocking write. You can wait here for
              * a few hundred us and then try again */
-            break;
+            return CO_ERROR_BUSY;
         } else if (n <= 0) {
             break;
         }

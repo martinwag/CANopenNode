@@ -219,6 +219,12 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
 }
 
 /******************************************************************************/
+CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
+{
+  return CO_CANsend(CANmodule, buffer);
+}
+
+/******************************************************************************/
 void CO_CANclearPendingSyncPDOs(CO_CANmodule_t *CANmodule)
 {
   /* We do not support "pending" messages. A message is either already enqueued
