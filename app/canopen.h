@@ -44,7 +44,8 @@ class Canopen: public Canopen_errors {
      * Falls mehrere notwendig sein sollten, Ablage z.B. in library-asotab */
     void *p_tpdo = nullptr; //Typ CO_TPDO_t
     TickType_t tpdo_called = 0;
-    void (*p_rpdo)(u16 id, const u8* p_data, u8 count);
+    void (*p_rpdo)(void *param, const u8* p_data, u8 count);
+    void *p_rpdo_param = nullptr;     /*!< Pointer f"ur Callback */
 
     /*1010*/CO_SDO_abortCode_t store_parameters_callback(CO_ODF_arg_t *p_odf_arg);
     /*1011*/CO_SDO_abortCode_t restore_default_parameters_callback(CO_ODF_arg_t *p_odf_arg);
@@ -229,11 +230,12 @@ class Canopen: public Canopen_errors {
      * gesichert.
      *
      * @param tpdo_com_param_index Eintrag des zugeh"origen RPDO communication parameter
-     * @param p Callback RPDO empfangen
+     * @param param Dieser Zeiger wird dem Callback "ubergeben
+     * @param p() Callback RPDO empfangen
      * @return CO_ERROR_NO wenn kein Fehler aufgetreten ist
      */
-    CO_ReturnError_t rpdo_take_control(u16 rpdo_com_param_index,
-        void (*p)(u16 id, const u8* p_data, u8 count));
+    CO_ReturnError_t rpdo_take_control(u16 rpdo_com_param_index, void *param,
+        void (*p)(void *param, const u8* p_data, u8 count));
 
     /**
      * Manuelle RPDO Steuerung deaktivieren

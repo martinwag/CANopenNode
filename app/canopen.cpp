@@ -762,7 +762,7 @@ bool Canopen::store_lss_config_callback(uint8_t nid, uint16_t bit_rate)
 void Canopen::rpdo_callback(const CO_RPDO_t *rpdo, const CO_CANrxMsg_t *message)
 {
   if (p_rpdo != nullptr) {
-    p_rpdo(rpdo->idx_RPDOCommPar, message->data, message->DLC);
+    p_rpdo(p_rpdo_param, message->data, message->DLC);
   }
 }
 #else
@@ -1195,8 +1195,8 @@ CO_ReturnError_t Canopen::tpdo_send(u16 id)
   return CO_TPDO_process(reinterpret_cast<CO_TPDO_t*>(p_tpdo), nullptr, false, difference_us); //nicht zyklisch -> kein Heartbeat!!
 }
 
-CO_ReturnError_t Canopen::rpdo_take_control(u16 rpdo_com_param_index,
-    void (*p)(u16 id, const u8* p_data, u8 count))
+CO_ReturnError_t Canopen::rpdo_take_control(u16 rpdo_com_param_index, void *param,
+    void (*p)(void *param, const u8* p_data, u8 count))
 {
   CO_RPDO_t *p_pdo;
   CO_ReturnError_t result;
@@ -1213,6 +1213,7 @@ CO_ReturnError_t Canopen::rpdo_take_control(u16 rpdo_com_param_index,
     return CO_ERROR_PARAMETERS;
   }
   p_rpdo = p;
+  p_rpdo_param = param;
   result = CO_RPDO_takeManualControl(p_pdo, true, this, rpdo_callback_wrapper);
   return result;
 }
@@ -1245,8 +1246,8 @@ CO_ReturnError_t Canopen::tpdo_send(u16 id)
 {
   return CO_ERROR_PARAMETERS;
 }
-CO_ReturnError_t Canopen::rpdo_take_control(u16 rpdo_com_param_index,
-    void (*p)(u16 id, const u8* p_data, u8 count))
+CO_ReturnError_t Canopen::rpdo_take_control(u16 rpdo_com_param_index, void *param,
+    void (*p)(void *param, const u8* p_data, u8 count))
 {
   return CO_ERROR_PARAMETERS;
 }
