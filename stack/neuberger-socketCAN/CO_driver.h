@@ -235,12 +235,14 @@ typedef enum{
     CO_ERROR_RX_MSG_LENGTH      = -7,   /**< Wrong receive message length */
     CO_ERROR_RX_PDO_LENGTH      = -8,   /**< Wrong receive PDO length */
     CO_ERROR_TX_OVERFLOW        = -9,   /**< Previous message is still waiting, buffer full */
-    CO_ERROR_TX_PDO_WINDOW      = -10,  /**< Synchronous TPDO is outside window */
-    CO_ERROR_TX_UNCONFIGURED    = -11,  /**< Transmit buffer was not confugured properly */
-    CO_ERROR_PARAMETERS         = -12,  /**< Error in function function parameters */
-    CO_ERROR_DATA_CORRUPT       = -13,  /**< Stored data are corrupt */
-    CO_ERROR_CRC                = -14,  /**< CRC does not match */
-    CO_ERROR_SYSCALL            = -15   /**< Syscall failed */
+    CO_ERROR_TX_BUSY            = -10,  /**< Sending rejected because driver is busy. Try again */
+    CO_ERROR_TX_PDO_WINDOW      = -11,  /**< Synchronous TPDO is outside window */
+    CO_ERROR_TX_UNCONFIGURED    = -12,  /**< Transmit buffer was not confugured properly */
+    CO_ERROR_PARAMETERS         = -13,  /**< Error in function function parameters */
+    CO_ERROR_DATA_CORRUPT       = -14,  /**< Stored data are corrupt */
+    CO_ERROR_CRC                = -15,  /**< CRC does not match */
+    CO_ERROR_WRONG_NMT_STATE    = -16,  /**< Command can't be processed in current state */
+    CO_ERROR_SYSCALL            = -17   /**< Syscall failed */
 }CO_ReturnError_t;
 
 
@@ -435,6 +437,22 @@ CO_CANtx_t *CO_CANtxBufferInit(
  */
 CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer);
 
+/**
+ * The same as #CO_CANsend(), but ensures that there is enough space remaining
+ * in the driver for more important messages.
+ *
+ * The default threshold is 50%, or at least 1 message buffer. If sending
+ * would violate those limits, #CO_ERROR_TX_OVERFLOW is returned and the
+ * message will not be sent.
+ *
+ * @param CANmodule This object.
+ * @param buffer Pointer to transmit buffer, returned by CO_CANtxBufferInit().
+ * Data bytes must be written in buffer before function call.
+ *
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_TX_OVERFLOW or
+ * CO_ERROR_TX_PDO_WINDOW (Synchronous TPDO is outside window).
+ */
+CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer);
 
 /**
  * Clear all synchronous TPDOs from CAN module transmit buffers.
