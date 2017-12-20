@@ -53,7 +53,7 @@ static BaseType_t canopen_terminal( char *pcWriteBuffer, size_t xWriteBufferLen,
 const CLI_Command_Definition_t terminal =
 {
   .pcCommand = "canopen",
-  .pcHelpString = "canopen -a x - address"  NEWLINE \
+  .pcHelpString = "canopen -n x - address"  NEWLINE \
                   "  -b x baudrate"  NEWLINE,
   .pxCommandInterpreter = canopen_terminal,
   .cExpectedNumberOfParameters = 2
