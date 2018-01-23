@@ -37,7 +37,7 @@ class Canopen: public Canopen_errors {
     class Canopen_storage storage;    /*!< OD Parameter */
     static const u8 main_interval = 50; /*!< ms, max. Wartezeit auf Events in process() */
     u32 worker_interval;              /*!< CO Thread Intervall */
-    static QueueHandle_t nmt_event_queue; /*!< per <nmt_event()> eingetragene Queue */
+    static QueueHandle_t nmt_event_queue; /*!< per <nmt_register()> eingetragene Queue */
     bool once;                        /*!< Flag Erststart */
     /* PDO in Anwendung f"ur PSE Stack
      * Einfachste Implementierung, solange nur eine Instanz notwendig ist.
@@ -84,6 +84,56 @@ class Canopen: public Canopen_errors {
     void timer_rx_thread();
 
   public:
+
+    /**
+     * @defgroup Netzwerkmanagement
+     *
+     * Sobald ein Thread CANopen Eventfunktionen nutzen m"ochte, muss mind.
+     * ein Handler f"ur das Event #nmt_event() #RESET_COMMUNICATION implementiert
+     * werden.
+     * Dies ist notwendig da nach einem Event #RESET_COMMUNICATION alle
+     * Netzwerkvariablen zur"uckgesetzt und alle eingetragenen Callbacks
+     * gel"oscht werden!
+     * @{
+     */
+
+    /**
+     * Eintragen eines Threads f"ur NMT Events
+     *
+     * Dieser wird f"ur die Dauer des Events "RESET_COMMUNICATION" pausiert.
+     *
+     * Das Event wird bei "Anderung des NMT Zustands ausgel"ost. Jedes Event
+     * beinhaltet die Information "uber den neuen Zustand.
+     *
+     * @remark Mit der aktuellen Implementierung kann nur ein Event Consumer
+     * registriert werden.
+     *
+     * @param p_event_queue Queue auf der das Event abelegt werden soll. Auf
+     * die Queue wird non-blocking geschrieben, d.H. Events werden verworfen
+     * wenn kein Platz mehr frei ist!
+     */
+    void nmt_register(QueueHandle_t event_queue);
+
+    /**
+     * M"ogliche NMT Events
+     */
+    typedef enum {
+      INITIALIZING = CO_NMT_INITIALIZING,      //!< Device is initializing. Do not use CANopen functions */
+      STOPPED = CO_NMT_STOPPED,                //!< Device is stopped. Do not use CANopen functions */
+      OPERATIONAL = CO_NMT_OPERATIONAL,        //!< Device is in operational state */
+      PRE_OPERATIONAL = CO_NMT_PRE_OPERATIONAL,//!< Device is in pre-operational state */
+      RESET_COMMUNICATION,                     //!< Device is loading communication parameters  */
+       //todo NMT Heartbeat Consumer Timeout
+    } nmt_event_t;
+
+    /**
+     * NMT Event an alle registrierten Threads weitergeben
+     *
+     * @param event zu sendendes Event
+     */
+    static void nmt_relay_event(nmt_event_t event);
+
+    /** @}*/
 
     /**
      * @defgroup OD Zugriffsfunktionen f"ur Objektverzeichnis
@@ -195,6 +245,9 @@ class Canopen: public Canopen_errors {
     /**
      * Manuelle TPDO Steuerung aktivieren
      *
+     * @remark Mit der aktuellen Implementierung kann nur ein Sender
+     * registriert werden.
+     *
      * @param tpdo_com_param_index Eintrag des zugeh"origen TPDO communication parameter
      * @return CO_ERROR_NO wenn erfolgreich
      */
@@ -222,6 +275,9 @@ class Canopen: public Canopen_errors {
 
     /**
      * Manuelle RPDO Steuerung aktivieren
+     *
+     * @remark Mit der aktuellen Implementierung kann nur ein RPDO Consumer
+     * registriert werden.
      *
      * @remark Auf die in diesen PDO gemappten OD Eintr"age kann nicht mehr
      * per SDO zugegriffen werden!
@@ -285,39 +341,6 @@ class Canopen: public Canopen_errors {
      * @param detail siehe <error_set()>
      */
     void error_reset(errorcode_t error, u32 detail);
-
-    /** @}*/
-
-    /**
-     * @defgroup NMT Zugriffsfunktionen auf Netzwerkmanagement
-     * @{
-     */
-
-    /**
-     * Eintragen einer Event Queue
-     *
-     * Das Event wird bei "Anderung des NMT Zustands ausgel"ost. Jedes Event
-     * beinhaltet die Information "uber den neuen Zustand.
-     *
-     * @remark Mit der aktuellen Implementierung kann nur ein Event Consumer
-     * registriert werden.
-     *
-     * @param p_event_queue Queue auf der das Event abelegt werden soll. Auf
-     * die Queue wird non-blocking geschrieben, d.H. Events werden verworfen
-     * wenn kein Platz mehr frei ist!
-     */
-    void nmt_event(QueueHandle_t event_queue);
-
-    /**
-     * M"ogliche NMT Events
-     */
-    typedef enum {
-      INITIALIZING = CO_NMT_INITIALIZING,      //!< Device is initializing */
-      PRE_OPERATIONAL = CO_NMT_PRE_OPERATIONAL,//!< Device is in pre-operational state */
-      OPERATIONAL = CO_NMT_OPERATIONAL,        //!< Device is in operational state */
-      STOPPED = CO_NMT_STOPPED,                //!< Device is stopped */
-       //todo NMT Heartbeat Consumer Timeout
-    } nmt_event_t;
 
     /** @}*/
 

@@ -622,13 +622,7 @@ CO_SDO_abortCode_t Canopen::serial_number_callback(CO_ODF_arg_t *p_odf_arg)
  */
 void Canopen::nmt_state_callback(CO_NMT_internalState_t state)
 {
-  /* Mit dieser Implementierung ist nur ein Konsument der Events f"ur alle
-   * Instanzen m"oglich. Falls mehr ben"otigt werden m"ussen die Queues in einer
-   * Liste abgelegt werden */
-  if (Canopen::nmt_event_queue != NULL) {
-    (void)xQueueSend(Canopen::nmt_event_queue,
-                     reinterpret_cast<nmt_event_t*>(&state), 0);
-  }
+  nmt_relay_event(static_cast<nmt_event_t>(state));
 }
 
 /**
@@ -796,6 +790,28 @@ void Canopen::timer_rx_thread(void)
  *
  * Bechreibung innerhalb der Klassendeklaration
  */
+
+/**
+ * @defgroup Zugriffsfunktionen auf Netzwerkmanagement
+ */
+
+void Canopen::nmt_register(QueueHandle_t event_queue)
+{
+  Canopen::nmt_event_queue = event_queue;
+  CO_NMT_initCallback(CO->NMT, &nmt_state_callback);
+}
+
+void Canopen::nmt_relay_event(nmt_event_t event)
+{
+  /* Mit dieser Implementierung ist nur ein Konsument der Events f"ur alle
+   * Instanzen m"oglich. Falls mehr ben"otigt werden m"ussen die Queues in einer
+   * Liste abgelegt werden */
+  if (Canopen::nmt_event_queue != 0) {
+    (void)xQueueSend(Canopen::nmt_event_queue, &event, 0);
+  }
+}
+
+/** @}*/
 
 /**
  * @defgroup Zugriffsfunktionen f"ur Objektverzeichnis
@@ -1066,6 +1082,12 @@ void Canopen::od_set(u16 index, u8 subindex, const char* p_visible_string)
   (void)snprintf(p, length, p_visible_string);
 }
 
+void Canopen::od_event(u16 index, QueueHandle_t event_queue)
+{
+  CO_OD_configure(CO->SDO[0], index, generic_write_callback,
+                  reinterpret_cast<void*>(event_queue), NULL, 0);
+}
+
 /** @}*/
 
 /**
@@ -1136,23 +1158,6 @@ void Canopen::error_reset(errorcode_t error, u32 detail)
 
 /** @}*/
 
-/**
- * @defgroup Zugriffsfunktionen auf Netzwerkmanagement
- */
-
-void Canopen::od_event(u16 index, QueueHandle_t event_queue)
-{
-  CO_OD_configure(CO->SDO[0], index, generic_write_callback,
-                  reinterpret_cast<void*>(event_queue), NULL, 0);
-}
-
-void Canopen::nmt_event(QueueHandle_t event_queue)
-{
-  Canopen::nmt_event_queue = event_queue;
-  CO_NMT_initCallback(CO->NMT, &nmt_state_callback);
-}
-
-/** @}*/
 #if defined(TPDO_MANUAL_CONTROL_EXTENSION) || defined(RPDO_MANUAL_CONTROL_EXTENSION)
 /**
  * @defgroup PDOs
@@ -1487,6 +1492,14 @@ CO_ReturnError_t Canopen::co_start(u8 pending_nid, u32 interval)
   set_callback(OD_2112_daisyChain, daisychain_callback_wrapper);
   set_callback(OD_5000_serialNumber, serial_number_callback_wrapper);
 
+  /* Durch Reset Communication werden alle Callbacks im Stack gel"oscht. Falls bereits
+   * ein NMT Callback eingetragen war, wird dieser erneut eingetragen und
+   * ein Event "Reset Communication" verteilt */
+  if (Canopen::nmt_event_queue != 0) {
+    nmt_register(Canopen::nmt_event_queue);
+    nmt_relay_event(RESET_COMMUNICATION);
+  }
+
   /* Configure Timer function for execution every <interval> millisecond */
   CANrx_threadTmr_init(this->worker_interval);
   if (timer_rx_handle != NULL) {
@@ -1558,6 +1571,9 @@ void Canopen::deinit(void)
   while (timer_rx_suspend != false) {
     vTaskDelay(1);
   }
+
+  /* NMT Subscribern den Zugriff auf CANopen Funktionen entziehen */
+  nmt_relay_event(INITIALIZING);
 
   CO_delete(CAN_MODULE_A);
   reset = CO_RESET_NOT;
