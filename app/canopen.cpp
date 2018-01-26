@@ -780,7 +780,9 @@ void Canopen::timer_rx_thread(void)
 
     if ((timer_rx_suspend == true) || (globals.get_reboot() == true)) {
       timer_rx_suspend = false;
+      wdt_pause(wdt);
       vTaskSuspend(NULL);
+      wdt_resume(wdt);
     }
   }
 }
