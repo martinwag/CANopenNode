@@ -333,6 +333,8 @@ CO_CANtx_t *CO_CANtxBufferInit(
             buffer->ident |= CAN_RTR_FLAG;
         }
         buffer->DLC = noOfBytes;
+        buffer->bufferFull = false;
+        buffer->syncFlag = syncFlag;
     }
 
     return buffer;
@@ -347,7 +349,7 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
     if (err == CO_ERROR_TX_BUSY) {
         /* send doesn't have "busy" */
 #ifdef USE_EMERGENCY_OBJECT
-        CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, n);
+        CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
 #endif
         err = CO_ERROR_TX_OVERFLOW;
     }
@@ -385,7 +387,7 @@ CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
 
     if(n != count){
 #ifdef USE_EMERGENCY_OBJECT
-        CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, n);
+        CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
 #endif
         err = CO_ERROR_TX_OVERFLOW;
     }

@@ -270,9 +270,18 @@ typedef struct{
 
 
 /**
- * Transmit message object. No difference to rxMsg in this driver.
+ * Transmit message object as aligned in socketCAN.
  */
-typedef CO_CANrxMsg_t CO_CANtx_t;
+typedef struct{
+    /** CAN identifier. It must be read through CO_CANrxMsg_readIdent() function. */
+    uint32_t            ident;
+    uint8_t             DLC ;           /**< Length of CAN message */
+    uint8_t             padding[3];     /**< ensure alignment */
+    uint8_t             data[8];        /**< 8 data bytes */
+    volatile bool_t     bufferFull;     /**< True if previous message is still in buffer (not used in this driver) */
+    /** Synchronous PDO messages has this flag set. It prevents them to be sent outside the synchronous window */
+    volatile bool_t     syncFlag;
+} CO_CANtx_t;
 
 
 /**
