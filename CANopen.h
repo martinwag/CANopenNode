@@ -342,7 +342,7 @@ void CO_process_TPDO(
  */
 CO_RPDO_t *CO_get_RPDO(
         CO_t                   *CO,
-        u16                     rpdoComParIndex);
+        uint16_t                rpdoComParIndex);
 
 
 /**
@@ -356,7 +356,7 @@ CO_RPDO_t *CO_get_RPDO(
  */
 CO_TPDO_t *CO_get_TPDO(
         CO_t                   *CO,
-        u16                     tpdoComParIndex);
+        uint16_t                tpdoComParIndex);
 
 #ifdef __cplusplus
 }
