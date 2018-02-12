@@ -376,7 +376,7 @@ CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
             /* try again */
             continue;
         }
-        else if (errno==EAGAIN || errno==EWOULDBLOCK) {
+        else if (errno==EAGAIN) {
             /* socket queue full */
             err = CO_ERROR_TX_OVERFLOW;
         }
