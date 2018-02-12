@@ -371,10 +371,14 @@ CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
     count = sizeof(struct can_frame);
     do {
         errno = 0;
-        n = write(CANmodule->fd, buffer, count);
-        if (errno==EINTR || errno==EAGAIN) {
+        n = send(CANmodule->fd, buffer, count, MSG_DONTWAIT);
+        if (errno==EINTR) {
             /* try again */
             continue;
+        }
+        else if (errno==EAGAIN || errno==EWOULDBLOCK) {
+            /* socket queue full */
+            err = CO_ERROR_TX_OVERFLOW;
         }
         else if (errno == ENOBUFS) {
             /* socketCAN doesn't support blocking write. You can wait here for
