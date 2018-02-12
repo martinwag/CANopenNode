@@ -378,7 +378,7 @@ CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
         }
         else if (errno==EAGAIN) {
             /* socket queue full */
-            err = CO_ERROR_TX_OVERFLOW;
+            return CO_ERROR_TX_OVERFLOW;
         }
         else if (errno == ENOBUFS) {
             /* socketCAN doesn't support blocking write. You can wait here for
