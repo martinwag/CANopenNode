@@ -197,7 +197,8 @@ void CO_EM_process(
         CO_EMpr_t              *emPr,
         bool_t                  NMTisPreOrOperational,
         uint16_t                timeDifference_100us,
-        uint16_t                emInhTime)
+        uint16_t                emInhTime,
+        uint16_t               *timerNext_ms)
 {
 
     CO_EM_t *em = emPr->em;
@@ -281,6 +282,14 @@ void CO_EM_process(
 
         /* send CAN message */
         CO_CANsend(emPr->CANdev, emPr->CANtxBuff);
+
+        if(timerNext_ms!=NULL && em->bufReadPtr!=em->bufWritePtr){
+            /* Queue is not empty. Signal request for call, respect inhibit time */
+            uint16_t diff = (emInhTime + 9) / 10; //always round up
+            if (*timerNext_ms > diff) {
+                *timerNext_ms = diff;
+            }
+        }
     }
 
     return;
