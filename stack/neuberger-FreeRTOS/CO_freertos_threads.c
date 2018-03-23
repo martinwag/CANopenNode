@@ -75,6 +75,7 @@ void threadMain_init(uint16_t interval, TaskHandle_t threadMainID)
   threadMain.interval_start = xTaskGetTickCount();
   threadMain.id = threadMainID;
   CO_SDO_initCallback(CO->SDO[0], threadMain_resumeCallback);
+  CO_EM_initCallback(CO->em, threadMain_resumeCallback);
 }
 
 void threadMain_close(void)
