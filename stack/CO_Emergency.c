@@ -241,54 +241,56 @@ void CO_EM_process(
     /* send Emergency message. */
     if(     NMTisPreOrOperational &&
             !emPr->CANtxBuff->bufferFull &&
-            emPr->inhibitEmTimer >= emInhTime &&
             (em->bufReadPtr != em->bufWritePtr || em->bufFull))
     {
         uint32_t preDEF;    /* preDefinedErrorField */
+        uint16_t diff;
         
-        /* add error register */
-        em->bufReadPtr[2] = *emPr->errorRegister;
+        if (emPr->inhibitEmTimer >= emInhTime) {
+            /* inhibit time elapsed, send message */
 
-        /* copy data to CAN emergency message */
-        CO_memcpy(emPr->CANtxBuff->data, em->bufReadPtr, 8U);
-        CO_memcpy((uint8_t*)&preDEF, em->bufReadPtr, 4U);
-        em->bufReadPtr += 8;
+            /* add error register */
+            em->bufReadPtr[2] = *emPr->errorRegister;
 
-        /* Update read buffer pointer and reset inhibit timer */
-        if(em->bufReadPtr == em->bufEnd){
-            em->bufReadPtr = em->buf;
-        }
-        emPr->inhibitEmTimer = 0U;
+            /* copy data to CAN emergency message */
+            CO_memcpy(emPr->CANtxBuff->data, em->bufReadPtr, 8U);
+            CO_memcpy((uint8_t*)&preDEF, em->bufReadPtr, 4U);
+            em->bufReadPtr += 8;
 
-        /* verify message buffer overflow, then clear full flag */
-        if(em->bufFull == 2U){
-            em->bufFull = 0U;    /* will be updated below */
-            CO_errorReport(em, CO_EM_EMERGENCY_BUFFER_FULL, CO_EMC_GENERIC, 0U);
-        }
-        else{
-            em->bufFull = 0;
-        }
-
-        /* write to 'pre-defined error field' (object dictionary, index 0x1003) */
-        if(emPr->preDefErr){
-            uint8_t i;
-
-            if(emPr->preDefErrNoOfErrors < emPr->preDefErrSize)
-                emPr->preDefErrNoOfErrors++;
-            for(i=emPr->preDefErrNoOfErrors-1; i>0; i--)
-                emPr->preDefErr[i] = emPr->preDefErr[i-1];
-            emPr->preDefErr[0] = preDEF;
-        }
-
-        /* send CAN message */
-        CO_CANsend(emPr->CANdev, emPr->CANtxBuff);
-
-        if(timerNext_ms!=NULL && em->bufReadPtr!=em->bufWritePtr){
-            /* Queue is not empty. Signal request for call, respect inhibit time */
-            uint16_t diff = (emInhTime + 9) / 10; //always round up
-            if (*timerNext_ms > diff) {
-                *timerNext_ms = diff;
+            /* Update read buffer pointer and reset inhibit timer */
+            if(em->bufReadPtr == em->bufEnd){
+                em->bufReadPtr = em->buf;
             }
+            emPr->inhibitEmTimer = 0U;
+
+            /* verify message buffer overflow, then clear full flag */
+            if(em->bufFull == 2U){
+                em->bufFull = 0U;    /* will be updated below */
+                CO_errorReport(em, CO_EM_EMERGENCY_BUFFER_FULL, CO_EMC_GENERIC, 0U);
+            }
+            else{
+                em->bufFull = 0;
+            }
+
+            /* write to 'pre-defined error field' (object dictionary, index 0x1003) */
+            if(emPr->preDefErr){
+                uint8_t i;
+
+                if(emPr->preDefErrNoOfErrors < emPr->preDefErrSize)
+                    emPr->preDefErrNoOfErrors++;
+                for(i=emPr->preDefErrNoOfErrors-1; i>0; i--)
+                    emPr->preDefErr[i] = emPr->preDefErr[i-1];
+                emPr->preDefErr[0] = preDEF;
+            }
+
+            /* send CAN message */
+            CO_CANsend(emPr->CANdev, emPr->CANtxBuff);
+        }
+
+        /* check again after inhibit time elapsed */
+        diff = (emInhTime + 9) / 10; /* time difference in ms, always round up */
+        if (*timerNext_ms > diff) {
+            *timerNext_ms = diff;
         }
     }
 
