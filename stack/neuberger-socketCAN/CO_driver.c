@@ -211,6 +211,7 @@ CO_ReturnError_t CO_CANmodule_init(
 //    } todo
 
     /* bind socket */
+    memset(&sockAddr, 0, sizeof(sockAddr));
     sockAddr.can_family = AF_CAN;
     sockAddr.can_ifindex = CANbaseAddress;
     ret = bind(CANmodule->fd, (struct sockaddr*)&sockAddr, sizeof(sockAddr));
