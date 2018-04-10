@@ -61,6 +61,13 @@
   #define USE_EMERGENCY_OBJECT
 #endif
 
+#ifndef MAX
+#define MAX(a,b) \
+  ({ __typeof__ (a) _a = (a); \
+      __typeof__ (b) _b = (b); \
+    _a > _b ? _a : _b; })
+#endif
+
 /** Disable socketCAN rx *****************************************************/
 static CO_ReturnError_t disableRx(CO_CANmodule_t *CANmodule)
 {
@@ -157,6 +164,12 @@ CO_ReturnError_t CO_CANmodule_init(
         return CO_ERROR_ILLEGAL_ARGUMENT;
     }
 
+    /* Create Notification Pipe */
+    CANmodule->pipe = CO_NotifyPipeCreate();
+    if (CANmodule->pipe==NULL) {
+        return CO_ERROR_OUT_OF_MEMORY;
+    }
+
     /* Configure object variables */
     CANmodule->CANbaseAddress = CANbaseAddress;
     CANmodule->rxArray = rxArray;
@@ -248,12 +261,14 @@ void CO_CANmodule_disable(CO_CANmodule_t *CANmodule)
     /* turn off the module */
 
     if (CANmodule == NULL) {
-      return;
+        return;
     }
 
     if (CANmodule->fd >= 0) {
+        CO_NotifyPipeSend(CANmodule->pipe);
         close(CANmodule->fd);
     }
+    CO_NotifyPipeFree(CANmodule->pipe);
     CANmodule->fd = -1;
 
     if (CANmodule->rxFilter != NULL) {
@@ -442,21 +457,14 @@ static CO_ReturnError_t CO_CANread(
     msghdr.msg_controllen = sizeof(ctrlmsg);
     msghdr.msg_flags = 0;
 
-    do {
-        errno = 0;
-        n = recvmsg(CANmodule->fd, &msghdr, 0);
-        if (errno==EINTR || errno==EAGAIN) {
-            /* try again */
-            continue;
-        }
-        else if (n <= 0) {
+    n = recvmsg(CANmodule->fd, &msghdr, 0);
+    if (n <= 0) {
 #ifdef USE_EMERGENCY_OBJECT
-            CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_RXB_OVERFLOW,
-                           CO_EMC_CAN_OVERRUN, n);
+        CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_RXB_OVERFLOW,
+                       CO_EMC_CAN_OVERRUN, n);
 #endif
-            return CO_ERROR_SYSCALL;
-        }
-    } while (errno != 0);
+        return CO_ERROR_SYSCALL;
+    }
 
     /* check for rx queue overflow */
     cmsg = CMSG_FIRSTHDR(&msghdr);
@@ -480,6 +488,10 @@ static CO_ReturnError_t CO_CANread(
 int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, CO_CANrxMsg_t *buffer)
 {
     int32_t retval;
+    int fdCan;
+    int fdPipe;
+    int fdMax;
+    fd_set set;
     CO_ReturnError_t err;
     struct can_frame msg;
 
@@ -487,11 +499,35 @@ int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, CO_CANrxMsg_t *buffer)
         return -1;
     }
 
-    /* blocking read */
-    err = CO_CANread(CANmodule, &msg);
-    if (err != CO_ERROR_NO) {
-        return -1;
-    }
+    /* blocking read using select */
+    fdPipe = CO_NotifyPipeGetFd(CANmodule->pipe);
+    fdCan = CANmodule->fd;
+    fdMax = MAX(fdPipe, fdCan);
+
+    do {
+        errno = 0;
+        FD_ZERO(&set);
+        FD_SET(fdCan, &set);
+        FD_SET(fdPipe, &set);
+        retval = select(fdMax + 1, &set, NULL, NULL, NULL);
+        if (errno==EINTR || errno==EAGAIN) {
+            /* try again */
+            continue;
+        }
+        else if (retval < 0) {
+            /* select failed */
+            return -1;
+        } else if (FD_ISSET(fdCan, &set)) {
+            /* CAN socket ready */
+            err = CO_CANread(CANmodule, &msg);
+            if (err != CO_ERROR_NO) {
+                return -1;
+            }
+        } else if (FD_ISSET(fdPipe, &set)) {
+            /* pipe socket ready */
+            return -1;
+        }
+    } while (errno != 0);
 
     retval = -1;
     if(CANmodule->CANnormal){
