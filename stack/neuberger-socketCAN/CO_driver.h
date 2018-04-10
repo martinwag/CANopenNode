@@ -59,6 +59,8 @@ extern "C" {
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
 
+#include "CO_notify_pipe.h"
+
 /**
  * @defgroup CO_driver Driver
  * @ingroup CO_CANopen
@@ -297,7 +299,8 @@ typedef struct{
     uint16_t            txSize;         /**< From CO_CANmodule_init() */
     volatile bool_t     CANnormal;      /**< CAN module is in normal mode */
     void               *em;             /**< Emergency object */
-    int fd;
+    int                 fd;
+    CO_NotifyPipe_t     *pipe;
 }CO_CANmodule_t;
 
 
