@@ -53,6 +53,7 @@
 #include <linux/can/raw.h>
 #include <linux/can/error.h>
 #include <sys/socket.h>
+#include <time.h>
 
 #include "CO_driver.h"
 
@@ -258,14 +259,20 @@ CO_ReturnError_t CO_CANmodule_init(
 /******************************************************************************/
 void CO_CANmodule_disable(CO_CANmodule_t *CANmodule)
 {
-    /* turn off the module */
+    struct timespec wait;
 
+    /* turn off the module */
     if (CANmodule == NULL) {
         return;
     }
 
     if (CANmodule->fd >= 0) {
         CO_NotifyPipeSend(CANmodule->pipe);
+        /* give some time for delivery */
+        wait.tv_sec = 0;
+        wait.tv_nsec = 50 /* ms */ * 1000000;
+        nanosleep(&wait, NULL);
+
         close(CANmodule->fd);
     }
     CO_NotifyPipeFree(CANmodule->pipe);
