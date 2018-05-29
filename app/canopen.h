@@ -160,6 +160,8 @@ class Canopen: public Canopen_errors {
      * @param subindex OD Subindex (z.B. aus CO_OD.h)
      * @param [out] p_retval Im OD hinterlegter Wert
      */
+    void od_get(u16 index, u8 subindex, bool *p_retval);
+    /** \overload */
     void od_get(u16 index, u8 subindex, u8 *p_retval);
     /** \overload */
     void od_get(u16 index, u8 subindex, u16 *p_retval);
@@ -190,6 +192,8 @@ class Canopen: public Canopen_errors {
      * @param subindex OD Subindex (z.B. aus CO_OD.h)
      * @param val Zu übernehmender Wert
      */
+    void od_set(u16 index, u8 subindex, bool val);
+    /** \overload */
     void od_set(u16 index, u8 subindex, u8 val);
     /** \overload */
     void od_set(u16 index, u8 subindex, u16 val);

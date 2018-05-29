@@ -830,6 +830,18 @@ void Canopen::od_unlock(void)
   CO_UNLOCK_OD();
 }
 
+void Canopen::od_get(u16 index, u8 subindex, bool* p_retval)
+{
+  u8 *p;
+
+  p = (u8*)get_od_pointer(index, subindex, sizeof(*p));
+  if (p == NULL) {
+    *p_retval = false;
+    return;
+  }
+  *p_retval = (*p == 0) ? false : true;
+}
+
 void Canopen::od_get(u16 index, u8 subindex, u8* p_retval)
 {
   u8 *p;
@@ -956,6 +968,17 @@ void Canopen::od_get(u16 index, u8 subindex, const char** pp_visible_string)
     return;
   }
   *pp_visible_string = p;
+}
+
+void Canopen::od_set(u16 index, u8 subindex, bool val)
+{
+  u8 *p;
+
+  p = (u8*)get_od_pointer(index, subindex, sizeof(*p));
+  if (p == NULL) {
+    return;
+  }
+  *p = (val == true) ? 1 : 0;
 }
 
 void Canopen::od_set(u16 index, u8 subindex, u8 val)
