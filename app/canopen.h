@@ -17,6 +17,7 @@
 
 #include "os/freertos/include/FreeRTOS.h"
 #include "os/freertos/include/queue.h"
+#include "os/freertos/include/task.h"
 #include "os/freertos_cli/FreeRTOS_CLI.h"
 
 #include "interface/nbtyp.h"
