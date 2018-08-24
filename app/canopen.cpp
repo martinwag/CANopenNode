@@ -635,7 +635,7 @@ void Canopen::nmt_state_callback(CO_NMT_internalState_t state)
 CO_SDO_abortCode_t Canopen::generic_write_callback(CO_ODF_arg_t* p_odf_arg)
 {
   od_event_t event;
-  QueueHandle_t *p_event_queue;
+  QueueHandle_t event_queue;
 
   if (p_odf_arg->reading == true) {
     return CO_SDO_AB_NONE;
@@ -648,9 +648,9 @@ CO_SDO_abortCode_t Canopen::generic_write_callback(CO_ODF_arg_t* p_odf_arg)
   event.index = p_odf_arg->index;
   event.subindex = p_odf_arg->subIndex;
 
-  p_event_queue = reinterpret_cast<QueueHandle_t*>(p_odf_arg->object);
+  event_queue = reinterpret_cast<QueueHandle_t>(p_odf_arg->object);
 
-  (void)xQueueSend(p_event_queue, &event, 0);
+  (void)xQueueSend(event_queue, &event, 0);
 
   return CO_SDO_AB_NONE;
 }
