@@ -69,7 +69,7 @@ extern "C" {
  * work to do
  * @param object this pointer is given to _callback()_
  */
-extern void threadMain_init(void *callback(void*), void *object);
+extern void threadMain_init(void (*callback)(void*), void *object);
 
 /**
  * Cleanup mainline thread.

@@ -69,6 +69,9 @@ static struct
 
 /**
  * This function notifies the user application after an event happened
+ *
+ * This is necessary because not all stack callbacks support object pointers.
+ * It is not used for those callbacks that have this pointer!
  */
 static void threadMain_resumeCallback(void)
 {
@@ -77,7 +80,7 @@ static void threadMain_resumeCallback(void)
   }
 }
 
-void threadMain_init(void *callback(void*), void *object)
+void threadMain_init(void (*callback)(void*), void *object)
 {
   threadMain.start = CO_LinuxThreads_clock_gettime_ms();
   threadMain.pFunct = callback;
@@ -85,6 +88,12 @@ void threadMain_init(void *callback(void*), void *object)
 
   CO_SDO_initCallback(CO->SDO[0], threadMain_resumeCallback);
   CO_EM_initCallback(CO->em, threadMain_resumeCallback);
+#if CO_NO_LSS_CLIENT == 1
+  CO_LSSmaster_initCallback(CO->LSSmaster, threadMain.object, threadMain.pFunct);
+#endif
+#if CO_NO_SDO_CLIENT == 1
+  CO_SDOclient_initCallback(CO->SDOclient, threadMain_resumeCallback);
+#endif
 }
 
 void threadMain_close(void)
