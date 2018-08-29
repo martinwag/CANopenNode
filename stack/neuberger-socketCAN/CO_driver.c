@@ -62,12 +62,8 @@
   #define USE_EMERGENCY_OBJECT
 #endif
 
-#ifndef MAX
-#define MAX(a,b) \
-  ({ __typeof__ (a) _a = (a); \
-      __typeof__ (b) _b = (b); \
-    _a > _b ? _a : _b; })
-#endif
+pthread_mutex_t CO_EMCY_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t CO_OD_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /** Disable socketCAN rx *****************************************************/
 static CO_ReturnError_t disableRx(CO_CANmodule_t *CANmodule)
@@ -492,12 +488,13 @@ static CO_ReturnError_t CO_CANread(
 }
 
 /******************************************************************************/
-int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, CO_CANrxMsg_t *buffer)
+int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, int fdTimer, CO_CANrxMsg_t *buffer)
 {
     int32_t retval;
-    int fdCan;
-    int fdPipe;
+    int fd[4] = {-1, -1, -1, -1};
+    int fdArraySize = sizeof(fd) / sizeof(fd[0]);
     int fdMax;
+    int i;
     fd_set set;
     CO_ReturnError_t err;
     struct can_frame msg;
@@ -506,16 +503,27 @@ int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, CO_CANrxMsg_t *buffer)
         return -1;
     }
 
-    /* blocking read using select */
-    fdPipe = CO_NotifyPipeGetFd(CANmodule->pipe);
-    fdCan = CANmodule->fd;
-    fdMax = MAX(fdPipe, fdCan);
+    /*
+     * blocking read using select
+     */
+    fd[0] = CO_NotifyPipeGetFd(CANmodule->pipe);
+    fd[1] = fdTimer;
+    fd[2] = CANmodule->fd;
+    fdMax = -1;
+    for (i = 0; i < fdArraySize; i ++) {
+        if (fdMax < fd[i]) {
+            fdMax = fd[i];
+        }
+    }
 
     do {
         errno = 0;
         FD_ZERO(&set);
-        FD_SET(fdCan, &set);
-        FD_SET(fdPipe, &set);
+        for (i = 0; i < fdArraySize; i++) {
+            if (fd[i] > -1) {
+                FD_SET(fd[i], &set);
+            }
+        }
         retval = select(fdMax + 1, &set, NULL, NULL, NULL);
         if (errno==EINTR || errno==EAGAIN) {
             /* try again */
@@ -524,18 +532,27 @@ int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, CO_CANrxMsg_t *buffer)
         else if (retval < 0) {
             /* select failed */
             return -1;
-        } else if (FD_ISSET(fdCan, &set)) {
+        }
+        else if (FD_ISSET(fd[0], &set)) {
+            /* pipe socket ready */
+            return -1;
+        }
+        else if (FD_ISSET(fd[1], &set)) {
+            /* timer socket ready */
+            return -1;
+        }
+        else if (FD_ISSET(fd[2], &set)) {
             /* CAN socket ready */
             err = CO_CANread(CANmodule, &msg);
             if (err != CO_ERROR_NO) {
                 return -1;
             }
-        } else if (FD_ISSET(fdPipe, &set)) {
-            /* pipe socket ready */
-            return -1;
         }
     } while (errno != 0);
 
+    /*
+     * evaluate Rx
+     */
     retval = -1;
     if(CANmodule->CANnormal){
 
@@ -548,7 +565,7 @@ int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, CO_CANrxMsg_t *buffer)
             CO_CANrx_t *rcvMsgObj = NULL; /* receive message object from CO_CANmodule_t object. */
             bool_t msgMatched = false;
 
-            /* CANopenNode can message is compatible to the socketCAN one, except
+            /* CANopenNode can message is binary compatible to the socketCAN one, except
              * for extension flags */
             msg.can_id &= CAN_EFF_MASK;
             rcvMsg = (CO_CANrxMsg_t *) &msg;

@@ -299,7 +299,7 @@ CO_SDO_abortCode_t Canopen::cob_id_timestamp_callback(CO_ODF_arg_t *p_odf_arg)
  */
 
 /* 1018-4 Serial number
- * todo, nicht implementiert
+ * ro, wird beim Startup gesetzt
  */
 
 /* 1019 - Synchronous counter overflow value
@@ -797,7 +797,7 @@ void Canopen::timer_rx_thread(void)
  * @defgroup Zugriffsfunktionen auf Netzwerkmanagement
  */
 
-void Canopen::nmt_register(QueueHandle_t event_queue)
+void Canopen::nmt_register(queue event_queue)
 {
   Canopen::nmt_event_queue = event_queue;
   CO_NMT_initCallback(CO->NMT, &nmt_state_callback);

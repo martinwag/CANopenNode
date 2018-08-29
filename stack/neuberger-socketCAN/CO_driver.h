@@ -3,7 +3,7 @@
  *
  * This file is a template for other microcontrollers.
  *
- * @file        CO_driver.c
+ * @file        CO_driver.h
  * @ingroup     CO_driver
  * @author      Janez Paternoster, Martin Wagner
  * @copyright   2004 - 2015 Janez Paternoster, 2017 Neuberger Gebaeudeautomation GmbH
@@ -58,6 +58,8 @@ extern "C" {
 #include <stddef.h>         /* for 'NULL' */
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
+#include <endian.h>
+#include <pthread.h>
 
 #include "CO_notify_pipe.h"
 
@@ -172,14 +174,19 @@ extern "C" {
  * CO_SYNC_initCallback() function.
  * @{
  */
-    #define CO_LOCK_CAN_SEND()  /**< Lock critical section in CO_CANsend() */
-    #define CO_UNLOCK_CAN_SEND()/**< Unlock critical section in CO_CANsend() */
 
-    #define CO_LOCK_EMCY()      /**< Lock critical section in CO_errorReport() or CO_errorReset() */
-    #define CO_UNLOCK_EMCY()    /**< Unlock critical section in CO_errorReport() or CO_errorReset() */
+/* unused */
+#define CO_LOCK_CAN_SEND()  /**< Lock critical section in CO_CANsend() */
+#define CO_UNLOCK_CAN_SEND()/**< Unlock critical section in CO_CANsend() */
 
-    #define CO_LOCK_OD()        /**< Lock critical section when accessing Object Dictionary */
-    #define CO_UNLOCK_OD()      /**< Unock critical section when accessing Object Dictionary */
+extern pthread_mutex_t CO_EMCY_mutex;
+static inline int CO_LOCK_EMCY()    { return pthread_mutex_lock(&CO_EMCY_mutex); }  /**< Lock critical section in CO_errorReport() or CO_errorReset() */
+static inline void CO_UNLOCK_EMCY() { (void)pthread_mutex_unlock(&CO_EMCY_mutex); } /**< Unlock critical section in CO_errorReport() or CO_errorReset() */
+
+extern pthread_mutex_t CO_OD_mutex;
+static inline int CO_LOCK_OD()      { return pthread_mutex_lock(&CO_OD_mutex); }    /**< Lock critical section when accessing Object Dictionary */
+static inline void CO_UNLOCK_OD()   { (void)pthread_mutex_unlock(&CO_OD_mutex); }   /**< Unock critical section when accessing Object Dictionary */
+
 /** @} */
 
 /**
@@ -305,7 +312,7 @@ typedef struct{
 
 
 /**
- * Endianes.
+ * Endianess.
  *
  * Depending on processor or compiler architecture, one of the two macros must
  * be defined: CO_LITTLE_ENDIAN or CO_BIG_ENDIAN. CANopen itself is little endian.
@@ -491,12 +498,14 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule);
  * Both modes can be combined.
  *
  * @param CANmodule This object.
+ * @param fdTimer file descriptor with activated timeout. fd is not read after
+ *                expiring! -1 if not used.
  * @param buffer [out] storage for received message or _NULL_
  * @retval >= 0 index of received message in array set by #CO_CANmodule_init()
  *         _rxArray_, copy available in _buffer_
  * @retval -1 no message received
  */
-int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, CO_CANrxMsg_t *buffer);
+int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, int fdTimer, CO_CANrxMsg_t *buffer);
 
 #ifdef __cplusplus
 }

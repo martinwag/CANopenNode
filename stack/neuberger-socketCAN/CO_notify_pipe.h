@@ -3,7 +3,7 @@
  *
  * This file is a template for other microcontrollers.
  *
- * @file        CO_notify_pipe.c
+ * @file        CO_notify_pipe.h
  * @ingroup     CO_driver
  * @author      Martin Wagner
  * @copyright   2017 Neuberger Gebaeudeautomation GmbH
@@ -54,7 +54,7 @@ extern "C" {
 
 /**
  * @defgroup CO_pipe Pipe
- * @ingroup CO_CANopen
+ * @ingroup CO_driver
  * @{
  *
  * This is needed to wake up the can socket when blocking in select
