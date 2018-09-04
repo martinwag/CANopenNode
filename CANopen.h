@@ -95,6 +95,9 @@ extern "C" {
 #if CO_NO_LSS_CLIENT == 1
     #include "CO_LSSmaster.h"
 #endif
+#if CO_DAISY_PRODUCER == 1 || CO_DAISY_CONSUMER == 1
+    #include "CO_Daisychain.h"
+#endif
 
 /**
  * Default CANopen identifiers.
@@ -145,6 +148,12 @@ typedef struct{
 #if CO_NO_LSS_CLIENT == 1
     CO_LSSmaster_t     *LSSmaster;      /**< LSS master/client object */
 #endif
+#if CO_DAISY_CONSUMER == 1
+    CO_DaisyConsumer_t *DaisyConsumer;  /** Daisychain consumer object */
+#endif
+#if CO_DAISY_PRODUCER == 1
+    CO_DaisyProducer_t *DaisyProducer;  /** Daisychain producer object */
+#endif
 #if CO_NO_SDO_CLIENT == 1
     CO_SDOclient_t     *SDOclient;      /**< SDO client object */
 #endif
@@ -174,25 +183,6 @@ typedef struct{
 #if CO_NO_NMT_MASTER == 1
     uint8_t CO_sendNMTcommand(CO_t *CO, uint8_t command, uint8_t nodeID);
 #endif
-
-/**
- * Special function for daisy chain shift event. This message contains the
- * active node ID and the current shift counter. It should be triggered by
- * the Daisy Chain shift input.
- * This message uses the same COB ID on all nodes. The contained node ID
- * indicates the transmitter. It is in the user's responsibility to only
- * trigger the shift event on one node at a time.
- * The used COB ID (0x6DF) is not in the pre-defined connection set and is
- * also not reserved.
- *
- * @param CO CANopen object.
- * @param shiftCount current shift count.
- * @param nodeID current Node ID.
- * @return 0: Operation completed successfully.
- * @return other: same as CO_CANsend().
- */
-uint8_t CO_sendDaisyEvent(CO_t *CO, uint8_t shiftCount, uint8_t nodeID);
-
 
 #if CO_NO_LSS_SERVER == 1
 /**

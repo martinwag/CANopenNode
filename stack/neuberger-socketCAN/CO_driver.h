@@ -468,7 +468,7 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer);
  * @param buffer Pointer to transmit buffer, returned by CO_CANtxBufferInit().
  * Data bytes must be written in buffer before function call.
  *
- * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_TX_OVERFLOW or
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_TX_OVERFLOW, CO_ERROR_TX_BUSY or
  * CO_ERROR_TX_PDO_WINDOW (Synchronous TPDO is outside window).
  */
 CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer);

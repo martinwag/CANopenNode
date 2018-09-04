@@ -115,9 +115,10 @@
     #define CO_RXCAN_SDO_SRV  (CO_RXCAN_RPDO+CO_NO_RPDO)              /*  start index for SDO server message (request) */
     #define CO_RXCAN_SDO_CLI  (CO_RXCAN_SDO_SRV+CO_NO_SDO_SERVER)     /*  start index for SDO client message (response) */
     #define CO_RXCAN_CONS_HB  (CO_RXCAN_SDO_CLI+CO_NO_SDO_CLIENT)     /*  start index for Heartbeat Consumer messages */
-    #define CO_RXCAN_LSS      (CO_RXCAN_CONS_HB+CO_NO_HB_CONS)        /*  index for LSS rx message */
+    #define CO_RXCAN_DAISY    (CO_RXCAN_CONS_HB+CO_NO_HB_CONS)        /*  index for Daisychain Event message */
+    #define CO_RXCAN_LSS      (CO_RXCAN_DAISY+CO_NO_DAISY)            /*  index for LSS rx message */
     /* total number of received CAN messages */
-    #define CO_RXCAN_NO_MSGS (1+CO_NO_SYNC+CO_NO_RPDO+CO_NO_SDO_SERVER+CO_NO_SDO_CLIENT+CO_NO_HB_CONS+CO_NO_LSS_SERVER+CO_NO_LSS_CLIENT)
+    #define CO_RXCAN_NO_MSGS (1+CO_NO_SYNC+CO_NO_RPDO+CO_NO_SDO_SERVER+CO_NO_SDO_CLIENT+CO_NO_HB_CONS+CO_NO_LSS_SERVER+CO_NO_LSS_CLIENT+CO_NO_DAISY)
 
     #define CO_TXCAN_NMT       0                                      /*  index for NMT master message */
     #define CO_TXCAN_SYNC      CO_TXCAN_NMT+CO_NO_NMT_MASTER          /*  index for SYNC message */
@@ -151,6 +152,12 @@
 #endif
 #if CO_NO_LSS_CLIENT == 1
     static CO_LSSmaster_t       CO0_LSSmaster;
+#endif
+#if CO_DAISY_CONSUMER == 1
+    static CO_DaisyConsumer_t   CO0_DaisyConsumer;
+#endif
+#if CO_DAISY_PRODUCER == 1
+    static CO_DaisyProducer_t   CO0_DaisyProducer;
 #endif
 #if CO_NO_SDO_CLIENT == 1
     static CO_SDOclient_t       COO_SDOclient;
@@ -201,21 +208,6 @@
         return CO_CANsend(CO->CANmodule[0], NMTM_txBuff); /* 0 = success */
     }
 #endif
-
-/* Helper function for Daisy Chain Event **************************************/
-static CO_CANtx_t *Daisy_txBuff = 0;
-
-uint8_t CO_sendDaisyEvent(CO_t *CO, uint8_t shiftCount, uint8_t nodeID)
-{
-    if(Daisy_txBuff == 0){
-        /* error, CO_CANtxBufferInit() was not called for this buffer. */
-        return CO_ERROR_TX_UNCONFIGURED; /* -11 */
-    }
-    Daisy_txBuff->data[0] = shiftCount;
-    Daisy_txBuff->data[1] = nodeID;
-
-    return CO_CANsend(CO->CANmodule[0], Daisy_txBuff); /* 0 = success */
-}
 
 #if CO_NO_TRACE > 0
 static uint32_t CO_traceBufferSize[CO_NO_TRACE];
@@ -271,6 +263,12 @@ CO_ReturnError_t CO_new(void)
   #if CO_NO_LSS_CLIENT == 1
     CO->LSSmaster                       = &CO0_LSSmaster;
   #endif
+#if CO_DAISY_CONSUMER == 1
+    CO->DaisyConsumer                   = &CO0_DaisyConsumer;
+#endif
+#if CO_DAISY_PRODUCER == 1
+    CO->DaisyProducer                   = &CO0_DaisyProducer;
+#endif
   #if CO_NO_SDO_CLIENT == 1
     CO->SDOclient                       = &COO_SDOclient;
   #endif
@@ -310,6 +308,12 @@ CO_ReturnError_t CO_new(void)
       #if CO_NO_LSS_CLIENT == 1
         CO->LSSmaster                       = (CO_LSSmaster_t *)    calloc(1, sizeof(CO_LSSmaster_t));
       #endif
+      #if CO_DAISY_CONSUMER == 1
+        CO->DaisyConsumer                   = (CO_DaisyConsumer_t *)calloc(1, sizeof(CO_DaisyConsumer_t));
+      #endif
+      #if CO_DAISY_PRODUCER == 1
+        CO->DaisyProducer                   = (CO_DaisyProducer_t *)calloc(1, sizeof(CO_DaisyProducer_t));
+      #endif
       #if CO_NO_SDO_CLIENT == 1
         CO->SDOclient                       = (CO_SDOclient_t *)    calloc(1, sizeof(CO_SDOclient_t));
       #endif
@@ -345,6 +349,12 @@ CO_ReturnError_t CO_new(void)
   #endif
   #if CO_NO_LSS_CLIENT == 1
                   + sizeof(CO_LSSmaster_t)
+  #endif
+  #if CO_DAISY_CONSUMER == 1
+                  + sizeof(CO_DaisyProducer_t)
+  #endif
+  #if CO_DAISY_PRODUCER == 1
+                  + sizeof(CO_DaisyConsumer_t)
   #endif
   #if CO_NO_SDO_CLIENT == 1
                   + sizeof(CO_SDOclient_t)
@@ -382,6 +392,12 @@ CO_ReturnError_t CO_new(void)
   #endif
   #if CO_NO_LSS_CLIENT == 1
     if(CO->LSSmaster                    == NULL) errCnt++;
+  #endif
+  #if CO_DAISY_CONSUMER == 1
+    if(CO->DaisyConsumer                == NULL) errCnt++;
+  #endif
+  #if CO_DAISY_PRODUCER == 1
+    if(CO->DaisyProducer                == NULL) errCnt++;
   #endif
   #if CO_NO_SDO_CLIENT == 1
     if(CO->SDOclient                    == NULL) errCnt++;
@@ -536,15 +552,33 @@ CO_ReturnError_t CO_CANopenInit(
             0);               /* synchronous message flag bit */
 #endif
 
-    Daisy_txBuff = CO_CANtxBufferInit(
+#if CO_DAISY_CONSUMER == 1
+
+    err = CO_DaisyConsumer_init(
+            CO->DaisyConsumer,
+            CO_DaisyConsumer_DEFAULT_TIMEOUT,
             CO->CANmodule[0],
-            CO_TXCAN_DAISY,
-            CO_CAN_ID_DAISY,
-            0,
-            2,
-            0);
+            CO_RXCAN_DAISY,
+            CO_CAN_ID_DAISY);
+
+    if(err){return err;}
+
+#endif
+
+#if CO_DAISY_PRODUCER == 1
+
+    err = CO_DaisyProducer_init(
+            CO->DaisyProducer,
+            CO->CANmodule[0],
+            CO_RXCAN_DAISY,
+            CO_CAN_ID_DAISY);
+
+    if(err){return err;}
+
+#endif
 
 #if CO_NO_LSS_CLIENT == 1
+
     err = CO_LSSmaster_init(
             CO->LSSmaster,
             CO_LSSmaster_DEFAULT_TIMEOUT,
@@ -726,6 +760,12 @@ void CO_delete(int32_t CANbaseAddress){
   #endif
   #if CO_NO_LSS_CLIENT == 1
     free(CO->LSSmaster);
+  #if CO_DAISY_CONSUMER == 1
+    free(CO->DaisyConsumer);
+  #endif
+  #if CO_DAISY_PRODUCER == 1
+    free(CO->DaisyProducer);
+  #endif
   #endif
     free(CO_HBcons_monitoredNodes);
     free(CO->HBcons);
