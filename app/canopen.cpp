@@ -797,7 +797,7 @@ void Canopen::timer_rx_thread(void)
  * @defgroup Zugriffsfunktionen auf Netzwerkmanagement
  */
 
-void Canopen::nmt_register(queue event_queue)
+void Canopen::nmt_register(QueueHandle_t event_queue)
 {
   Canopen::nmt_event_queue = event_queue;
   CO_NMT_initCallback(CO->NMT, &nmt_state_callback);
