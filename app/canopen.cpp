@@ -709,7 +709,7 @@ void Canopen::daisychain_event_callback(void)
   shift_count = OD_daisyChain.shiftIn;
   CO_UNLOCK_OD();
 
-  (void)CO_sendDaisyEvent(CO, shift_count, nid);
+  (void)CO_DaisyProducer_sendEvent(CO->DaisyProducer, shift_count, nid);
 }
 
 /**

@@ -44,8 +44,8 @@
  */
 
 
-#ifndef CO_LSSslave_H
-#define CO_LSSslave_H
+#ifndef CO_Daisychain_H
+#define CO_Daisychain_H
 
 #include "CO_Daisychain.h"
 

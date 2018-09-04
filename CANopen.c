@@ -95,7 +95,8 @@
             || ODL_errorStatusBits_stringLength           < 10     \
             || CO_NO_LSS_SERVER                           >  1     \
             || CO_NO_LSS_CLIENT                           >  1     \
-            || (CO_NO_LSS_SERVER > 0 && CO_NO_LSS_CLIENT > 0)
+            || (CO_NO_LSS_SERVER > 0 && CO_NO_LSS_CLIENT > 0)      \
+            || (CO_DAISY_PRODUCER > 0 && CO_DAISY_CONSUMER > 0)
         #error Features from CO_OD.h file are not corectly configured for this project!
     #endif
 
