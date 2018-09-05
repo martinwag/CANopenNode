@@ -79,7 +79,7 @@
 #endif
 
 /* Syncronisation functions */
-#define IS_CANrxNew(rxNew) ((long)rxNew)
+#define IS_CANrxNew(rxNew) ((int)rxNew)
 #define SET_CANrxNew(rxNew) {CANrxMemoryBarrier(); rxNew = (void*)1L;}
 #define CLEAR_CANrxNew(rxNew) {CANrxMemoryBarrier(); rxNew = (void*)0L;}
 

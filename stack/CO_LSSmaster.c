@@ -486,8 +486,11 @@ CO_LSSmaster_return_t CO_LSSmaster_configureNodeId(
     }
 
     /* Initiate config node ID */
-    if (LSSmaster->state==CO_LSSmaster_STATE_CFG_SLECTIVE &&
-        LSSmaster->command==CO_LSSmaster_COMMAND_WAITING){
+    if ((LSSmaster->state==CO_LSSmaster_STATE_CFG_SLECTIVE ||
+        /* Let un-config node ID also be run in global mode for unconfiguring all nodes */
+        (LSSmaster->state==CO_LSSmaster_STATE_CFG_GLOBAL &&
+         nodeId == CO_LSS_NODE_ID_ASSIGNMENT)) &&
+         LSSmaster->command==CO_LSSmaster_COMMAND_WAITING) {
 
         LSSmaster->command = CO_LSSmaster_COMMAND_CFG_NODE_ID;
         LSSmaster->timeoutTimer = 0;
@@ -679,7 +682,8 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireLssAddress(
                 CO_LSS_INQUIRE_SERIAL, &lssAddress->identity.serialNumber);
     }
     /* Check for next request */
-    if (LSSmaster->state == CO_LSSmaster_STATE_CFG_SLECTIVE) {
+    if (LSSmaster->state == CO_LSSmaster_STATE_CFG_SLECTIVE ||
+        LSSmaster->state == CO_LSSmaster_STATE_CFG_GLOBAL) {
         if (LSSmaster->command == CO_LSSmaster_COMMAND_WAITING) {
 
             LSSmaster->command = CO_LSSmaster_COMMAND_INQUIRE_VENDOR;
@@ -728,8 +732,9 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
   }
 
   /* send request */
-  if (LSSmaster->state==CO_LSSmaster_STATE_CFG_SLECTIVE &&
-      LSSmaster->command == CO_LSSmaster_COMMAND_WAITING) {
+  if ((LSSmaster->state==CO_LSSmaster_STATE_CFG_SLECTIVE ||
+       LSSmaster->state==CO_LSSmaster_STATE_CFG_GLOBAL) &&
+       LSSmaster->command == CO_LSSmaster_COMMAND_WAITING) {
 
       LSSmaster->command = CO_LSSmaster_COMMAND_INQUIRE_NODE_ID;
       LSSmaster->timeoutTimer = 0;
@@ -986,7 +991,7 @@ CO_LSSmaster_return_t CO_LSSmaster_IdentifyFastscan(
 {
     uint8_t i;
     uint8_t count;
-    CO_LSSmaster_return_t ret;
+    CO_LSSmaster_return_t ret = CO_LSSmaster_INVALID_STATE;
     CO_LSS_fastscan_lss_sub_next next;
 
     /* parameter validation */

@@ -455,7 +455,7 @@ bool_t CO_TPDO_isManualControl(CO_TPDO_t *TPDO);
  *
  * @return True if COS was detected.
  */
-uint8_t CO_TPDOisCOS(CO_TPDO_t *TPDO);
+uint8_t CO_TPDOisCOS(const CO_TPDO_t *TPDO);
 
 
 /**
