@@ -1,5 +1,5 @@
 /*
- * CANopen LSS Slave protocol.
+ * CANopen Daisychain.
  *
  * @file        CO_Daisychain.c
  * @ingroup     CO_Daisychain
@@ -174,7 +174,7 @@ CO_ReturnError_t CO_DaisyConsumer_init(
 }
 
 void CO_DaisyConsumer_initCallback(
-        CO_LSSmaster_t      *DaisyConsumer,
+        CO_DaisyConsumer_t  *DaisyConsumer,
         void                *object,
         void               (*pFunctSignal)(void *object))
 {

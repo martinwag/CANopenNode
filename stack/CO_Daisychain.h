@@ -1,5 +1,5 @@
 /**
- * CANopen LSS Master/Slave protocol.
+ * CANopen Daisychain.
  *
  * @file        CO_Daisychain.h
  * @ingroup     CO_Daisychain
@@ -103,7 +103,7 @@ typedef struct{
  * Function must be called in the communication reset section.
  *
  * @param DaisyProducer This object will be initialized.
- * @param CANdevTx CAN device for LSS master transmission.
+ * @param CANdevTx CAN device for Daisychain event transmission.
  * @param CANdevTxIdx Index of transmit buffer in the above CAN device.
  * @param CANidDaisychain COB ID for transmission.
  * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
@@ -176,7 +176,7 @@ typedef struct{
  * @param timeout_ms consumer timeout in ms
  * @param CANdevRx CAN device for event reception.
  * @param CANdevRxIdx Index of receive buffer in the above CAN device.
- * @param CANidLssSlave COB ID for reception.
+ * @param CANidDaisychain COB ID for reception.
  * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
  */
 CO_ReturnError_t CO_DaisyConsumer_init(
@@ -198,7 +198,7 @@ CO_ReturnError_t CO_DaisyConsumer_init(
  * @param pFunctSignal Pointer to the callback function. Not called if NULL.
  */
 void CO_DaisyConsumer_initCallback(
-        CO_LSSmaster_t      *DaisyConsumer,
+        CO_DaisyConsumer_t  *DaisyConsumer,
         void                *object,
         void               (*pFunctSignal)(void *object));
 
