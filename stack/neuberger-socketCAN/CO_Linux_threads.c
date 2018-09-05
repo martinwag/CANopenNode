@@ -91,6 +91,9 @@ void threadMain_init(void (*callback)(void*), void *object)
 #if CO_NO_LSS_CLIENT == 1
   CO_LSSmaster_initCallback(CO->LSSmaster, threadMain.object, threadMain.pFunct);
 #endif
+#if CO_DAISY_CONSUMER == 1
+  CO_DaisyConsumer_initCallback(CO->DaisyConsumer, threadMain.object, threadMain.pFunct);
+#endif
 #if CO_NO_SDO_CLIENT == 1
   CO_SDOclient_initCallback(CO->SDOclient, threadMain_resumeCallback);
 #endif
