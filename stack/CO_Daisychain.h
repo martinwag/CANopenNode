@@ -47,8 +47,6 @@
 #ifndef CO_Daisychain_H
 #define CO_Daisychain_H
 
-#include "CO_Daisychain.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -203,7 +201,15 @@ void CO_DaisyConsumer_initCallback(
         void               (*pFunctSignal)(void *object));
 
 /**
- * Produce Daisychain Event
+ * Clear daisychain event
+ *
+ * @param DaisyConsumer This object.
+ */
+void CO_DaisyConsumer_clear(
+        CO_DaisyConsumer_t  *DaisyConsumer);
+
+/**
+ * Check for daisychain event
  *
  * @param DaisyConsumer This object.
  * @param timeDifference_ms Time difference from previous function call in

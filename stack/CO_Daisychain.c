@@ -184,6 +184,14 @@ void CO_DaisyConsumer_initCallback(
     }
 }
 
+void CO_DaisyConsumer_clear(
+        CO_DaisyConsumer_t  *DaisyConsumer)
+{
+    if (DaisyConsumer != NULL) {
+        CLEAR_CANrxNew(DaisyConsumer->CANrxNew);
+    }
+}
+
 CO_DaisyConsumer_return_t CO_DaisyConsumer_waitEvent(
         CO_DaisyConsumer_t  *DaisyConsumer,
         uint16_t             timeDifference_ms,
