@@ -80,6 +80,10 @@ CO_ReturnError_t CO_DaisyProducer_sendEvent(
     if (DaisyProducer==NULL){
         return CO_ERROR_ILLEGAL_ARGUMENT;
     }
+    if (DaisyProducer->CANdevTx==NULL || DaisyProducer->TXbuff==NULL) {
+        /* CANopenNode not yet initialized */
+        return CO_ERROR_WRONG_NMT_STATE;
+    }
 
     DaisyProducer->TXbuff->data[0] = shiftCount;
     DaisyProducer->TXbuff->data[1] = nodeID;
