@@ -94,8 +94,10 @@ void threadMain_init(void (*callback)(void*), void *object)
 #if CO_DAISY_CONSUMER == 1
   CO_DaisyConsumer_initCallback(CO->DaisyConsumer, threadMain.object, threadMain.pFunct);
 #endif
-#if CO_NO_SDO_CLIENT == 1
-  CO_SDOclient_initCallback(CO->SDOclient, threadMain_resumeCallback);
+#if CO_NO_SDO_CLIENT != 0
+  for (int i = 0; i < CO_NO_SDO_CLIENT; i++) {
+    CO_SDOclient_initCallback(CO->SDOclient[i], threadMain_resumeCallback);
+  }
 #endif
 }
 
