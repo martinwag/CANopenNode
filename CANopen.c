@@ -175,7 +175,12 @@
 #if CO_NO_NMT_MASTER == 1
     CO_CANtx_t *NMTM_txBuff = 0;
 
-    CO_ReturnError_t CO_sendNMTcommand(CO_t *CO, uint8_t command, uint8_t nodeID){
+    static CO_ReturnError_t CO_sendNMTcommandInternal(
+            CO_t      *CO,
+            uint8_t    command,
+            uint8_t    nodeID,
+            bool_t     ignoreBcst)
+    {
         if(NMTM_txBuff == 0){
             /* error, CO_CANtxBufferInit() was not called for this buffer. */
             return CO_ERROR_TX_UNCONFIGURED; /* -11 */
@@ -184,7 +189,7 @@
         NMTM_txBuff->data[1] = nodeID;
 
         /* Apply NMT command also to this node, if set so. */
-        if(nodeID == 0 || nodeID == CO->NMT->nodeId){
+        if((nodeID == 0 && ignoreBcst == 0) || nodeID == CO->NMT->nodeId){
             switch(command){
                 case CO_NMT_ENTER_OPERATIONAL:
                     if((*CO->NMT->emPr->errorRegister) == 0) {
@@ -207,6 +212,22 @@
         }
 
         return CO_CANsend(CO->CANmodule[0], NMTM_txBuff); /* 0 = success */
+    }
+
+    CO_ReturnError_t CO_sendNMTcommand(
+            CO_t      *CO,
+            uint8_t    command,
+            uint8_t    nodeID)
+    {
+        return CO_sendNMTcommandInternal(CO, command, nodeID, 0);
+    }
+
+    CO_ReturnError_t CO_sendNMTcommandMaster(
+            CO_t      *CO,
+            uint8_t    command,
+            uint8_t    nodeID)
+    {
+        return CO_sendNMTcommandInternal(CO, command, nodeID, 1);
     }
 #endif
 

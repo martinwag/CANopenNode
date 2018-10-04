@@ -167,21 +167,45 @@ typedef struct{
     extern CO_t *CO;
 
 
-/**
- * Function CO_sendNMTcommand() is simple function, which sends CANopen message.
- * This part of code is an example of custom definition of simple CANopen
- * object. Follow the code in CANopen.c file. If macro CO_NO_NMT_MASTER is 1,
- * function CO_sendNMTcommand can be used to send NMT master message.
- *
- * @param CO CANopen object.
- * @param command NMT command.
- * @param nodeID Node ID.
- *
- * @return 0: Operation completed successfully.
- * @return other: same as CO_CANsend().
- */
 #if CO_NO_NMT_MASTER == 1
-    CO_ReturnError_t CO_sendNMTcommand(CO_t *CO, uint8_t command, uint8_t nodeID);
+    /**
+     * Function CO_sendNMTcommand() is simple function, which sends CANopen message.
+     * This part of code is an example of custom definition of simple CANopen
+     * object. Follow the code in CANopen.c file. If macro CO_NO_NMT_MASTER is 1,
+     * function CO_sendNMTcommand can be used to send NMT master message.
+     *
+     * This function also affects the own instance if nodeID is own ID or broadcast
+     *
+     * @param CO CANopen object.
+     * @param command NMT command.
+     * @param nodeID Node ID.
+     *
+     * @return 0: Operation completed successfully.
+     * @return other: same as CO_CANsend().
+     */
+    CO_ReturnError_t CO_sendNMTcommand(
+            CO_t      *CO,
+            uint8_t    command,
+            uint8_t    nodeID);
+
+    /**
+     * Like _CO_sendNMTcommand()_, but ignores own instance when broadcast ID is selected.
+     *
+     * Useful when software wants to send command to everyone, except self.
+     *
+     * @param CO CANopen object.
+     * @param command NMT command.
+     * @param nodeID Node ID.
+     *
+     * @return 0: Operation completed successfully.
+     * @return other: same as CO_CANsend().
+     */
+    CO_ReturnError_t CO_sendNMTcommandMaster(
+            CO_t      *CO,
+            uint8_t    command,
+            uint8_t    nodeID);
+
+
 #endif
 
 
