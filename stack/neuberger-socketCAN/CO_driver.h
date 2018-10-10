@@ -58,7 +58,7 @@ extern "C" {
 #include <stddef.h>         /* for 'NULL' */
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
-#include <time.h>           /* for 'struct timespec' */
+#include <sys/time.h>       /* for 'struct timeval' */
 #include <endian.h>
 #include <pthread.h>
 
@@ -252,7 +252,8 @@ typedef enum{
     CO_ERROR_DATA_CORRUPT       = -14,  /**< Stored data are corrupt */
     CO_ERROR_CRC                = -15,  /**< CRC does not match */
     CO_ERROR_WRONG_NMT_STATE    = -16,  /**< Command can't be processed in current state */
-    CO_ERROR_SYSCALL            = -17   /**< Syscall failed */
+    CO_ERROR_SYSCALL            = -17,  /**< Syscall failed */
+    CO_ERROR_INVALID_STATE      = -18   /**< Driver not ready */
 }CO_ReturnError_t;
 
 
@@ -276,6 +277,10 @@ typedef struct{
     uint32_t            mask;           /**< Standard Identifier mask with same alignment as ident */
     void               *object;         /**< From CO_CANrxBufferInit() */
     void              (*pFunct)(void *object, const CO_CANrxMsg_t *message);  /**< From CO_CANrxBufferInit() */
+
+    /** info about last received message */
+    int32_t             CANbaseAddress; /**< CAN Interface identifier */
+    struct timeval      timestamp;      /**< time of reception */
 }CO_CANrx_t;
 
 
@@ -291,14 +296,26 @@ typedef struct{
     volatile bool_t     bufferFull;     /**< True if previous message is still in buffer (not used in this driver) */
     /** Synchronous PDO messages has this flag set. It prevents them to be sent outside the synchronous window */
     volatile bool_t     syncFlag;
+
+    /** info about transmit message */
+    int32_t             CANbaseAddress; /**< CAN Interface identifier to use */
 } CO_CANtx_t;
 
+/**
+ * socketCAN interface object
+ */
+typedef struct {
+    int32_t             CANbaseAddress; /**< CAN Interface identifier */
+    int                 fd;             /**< socketCAN file descriptor */
+} CO_CANinterface_t;
 
 /**
  * CAN module object. It may be different in different microcontrollers.
  */
 typedef struct{
-    int32_t             CANbaseAddress; /**< From CO_CANmodule_init() */
+    /** List of can interfaces. From CO_CANmodule_init()/ one per CO_CANmodule_addInterface() call */
+    CO_CANinterface_t  *CANinterfaces;
+    uint32_t            CANinterfaceCount; /** interface count */
     CO_CANrx_t         *rxArray;        /**< From CO_CANmodule_init() */
     uint16_t            rxSize;         /**< From CO_CANmodule_init() */
     struct can_filter  *rxFilter;       /**< socketCAN filter list, one per rx buffer */
@@ -307,8 +324,9 @@ typedef struct{
     uint16_t            txSize;         /**< From CO_CANmodule_init() */
     volatile bool_t     CANnormal;      /**< CAN module is in normal mode */
     void               *em;             /**< Emergency object */
-    int                 fd;
-    CO_NotifyPipe_t     *pipe;
+    CO_NotifyPipe_t    *pipe;           /**< Notification Pipe */
+    int                 fdEpoll;        /**< epoll FD */
+    int                 fdTimerRead;    /**< timer handle from CANrxWait() */
 }CO_CANmodule_t;
 
 
@@ -327,7 +345,7 @@ typedef struct{
 #endif
 
 /**
- * Request CAN configuration (stopped) mode and *wait* untill it is set.
+ * Request CAN configuration (stopped) mode and *wait* until it is set.
  *
  * @param CANbaseAddress CAN module base address.
  */
@@ -335,7 +353,7 @@ void CO_CANsetConfigurationMode(int32_t CANbaseAddress);
 
 
 /**
- * Request CAN normal (opearational) mode and *wait* untill it is set.
+ * Request CAN normal (opearational) mode and *wait* until it is set.
  *
  * @param CANmodule This object.
  */
@@ -396,8 +414,8 @@ CO_ReturnError_t CO_CANmodule_init(
  *
  * @param CANmodule This object will be initialized.
  * @param CANbaseAddress CAN module base address.
- * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT or
- * CO_ERROR_SYSCALL.
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT,
+ * CO_ERROR_SYSCALL or CO_ERROR_INVALID_STATE.
  */
 CO_ReturnError_t CO_CANmodule_addInterface(
         CO_CANmodule_t         *CANmodule,
@@ -475,7 +493,7 @@ bool_t CO_CANrxBuffer_getInterface(
         CO_CANmodule_t         *CANmodule,
         uint32_t                index,
         int32_t                *CANbaseAddressRx,
-        struct timespec        *timestamp);
+        struct timeval         *timestamp);
 
 #endif
 
@@ -521,7 +539,7 @@ CO_CANtx_t *CO_CANtxBufferInit(
  *
  * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
  */
-CO_CANtx_t CO_CANtxBuffer_setInterface(
+CO_ReturnError_t CO_CANtxBuffer_setInterface(
         CO_CANmodule_t         *CANmodule,
         uint32_t                index,
         int32_t                 CANbaseAddressRx);

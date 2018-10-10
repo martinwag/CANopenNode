@@ -53,7 +53,7 @@
 #include <linux/can/raw.h>
 #include <linux/can/error.h>
 #include <sys/socket.h>
-#include <time.h>
+#include <sys/epoll.h>
 
 #include "CO_driver.h"
 
@@ -65,17 +65,28 @@
 pthread_mutex_t CO_EMCY_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t CO_OD_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+#ifndef CO_DRIVER_MULTI_INTERFACE
+static CO_ReturnError_t CO_CANmodule_addInterface(CO_CANmodule_t *CANmodule, int32_t CANbaseAddress);
+#endif
+
 /** Disable socketCAN rx *****************************************************/
 static CO_ReturnError_t disableRx(CO_CANmodule_t *CANmodule)
 {
   int ret;
+  uint32_t i;
+  CO_ReturnError_t retval;
 
   /* insert a filter that doesn't match any messages */
-  ret = setsockopt(CANmodule->fd, SOL_CAN_RAW, CAN_RAW_FILTER, NULL, 0);
-  if(ret < 0){
-      return CO_ERROR_SYSCALL;
+  retval = CO_ERROR_NO;
+  for (i = 0; i < CANmodule->CANinterfaceCount; i ++) {
+    ret = setsockopt(CANmodule->CANinterfaces[i].fd, SOL_CAN_RAW, CAN_RAW_FILTER,
+                     NULL, 0);
+    if(ret < 0){
+        retval = CO_ERROR_SYSCALL;
+    }
   }
-  return CO_ERROR_NO;
+
+  return retval;
 }
 
 /** Set up or update socketCAN rx filters *************************************/
@@ -84,6 +95,7 @@ static CO_ReturnError_t setRxFilters(CO_CANmodule_t *CANmodule)
     int ret;
     int i;
     int count;
+    CO_ReturnError_t retval;
 
     struct can_filter rxFiltersCpy[CANmodule->rxSize];
 
@@ -105,12 +117,16 @@ static CO_ReturnError_t setRxFilters(CO_CANmodule_t *CANmodule)
         return disableRx(CANmodule);
     }
 
-    ret = setsockopt(CANmodule->fd, SOL_CAN_RAW, CAN_RAW_FILTER, rxFiltersCpy,
-                     sizeof(struct can_filter) * count);
-    if(ret < 0){
-        return CO_ERROR_SYSCALL;
+    retval = CO_ERROR_NO;
+    for (i = 0; i < CANmodule->CANinterfaceCount; i ++) {
+      ret = setsockopt(CANmodule->CANinterfaces[i].fd, SOL_CAN_RAW, CAN_RAW_FILTER,
+                       rxFiltersCpy, sizeof(struct can_filter) * count);
+      if(ret < 0){
+          retval = CO_ERROR_SYSCALL;
+      }
     }
-    return CO_ERROR_NO;
+
+    return retval;
 }
 
 
@@ -128,7 +144,7 @@ void CO_CANsetNormalMode(CO_CANmodule_t *CANmodule)
 
     CANmodule->CANnormal = false;
 
-    if(CANmodule != NULL && CANmodule->fd >= 0) {
+    if(CANmodule != NULL) {
         ret = setRxFilters(CANmodule);
         if (ret == CO_ERROR_NO) {
             /* Put CAN module in normal mode */
@@ -149,34 +165,54 @@ CO_ReturnError_t CO_CANmodule_init(
         uint16_t                CANbitRate)
 {
     int32_t ret;
-    int32_t ovfl;
-    int32_t bytes;
     uint16_t i;
-    socklen_t sLen;
-    can_err_mask_t err_mask;
-    struct sockaddr_can sockAddr;
+    struct epoll_event ev;
 
     /* verify arguments */
     if(CANmodule==NULL || rxArray==NULL || txArray==NULL){
         return CO_ERROR_ILLEGAL_ARGUMENT;
     }
 
-    /* Create Notification Pipe */
+    /* Create epoll FD */
+    CANmodule->fdEpoll = epoll_create(1);
+    if(CANmodule->fdEpoll < 0){
+        CO_CANmodule_disable(CANmodule);
+        return CO_ERROR_SYSCALL;
+    }
+
+    /* Create notification pipe */
     CANmodule->pipe = CO_NotifyPipeCreate();
     if (CANmodule->pipe==NULL) {
+        CO_CANmodule_disable(CANmodule);
         return CO_ERROR_OUT_OF_MEMORY;
+    }
+    /* ...and add it to epoll */
+    ev.events = EPOLLIN;
+    ev.data.fd = CO_NotifyPipeGetFd(CANmodule->pipe);
+    ret = epoll_ctl(CANmodule->fdEpoll, EPOLL_CTL_ADD, ev.data.fd, &ev);
+    if(ret < 0){
+        CO_CANmodule_disable(CANmodule);
+        return CO_ERROR_SYSCALL;
     }
 
     /* Configure object variables */
-    CANmodule->CANbaseAddress = CANbaseAddress;
+    CANmodule->CANinterfaces = NULL;
+    CANmodule->CANinterfaceCount = 0;
     CANmodule->rxArray = rxArray;
     CANmodule->rxSize = rxSize;
     CANmodule->txArray = txArray;
     CANmodule->txSize = txSize;
     CANmodule->CANnormal = false;
-    CANmodule->fd = -1;
-    CANmodule->rxFilter = NULL;
     CANmodule->em = NULL; //this is set inside CO_Emergency.c init function!
+    CANmodule->fdTimerRead = -1;
+
+    /* initialize socketCAN filters
+     * CAN module filters will be configured with CO_CANrxBufferInit()
+     * functions, called by separate CANopen init functions */
+    CANmodule->rxFilter = calloc(CANmodule->rxSize, sizeof(struct can_filter));
+    if(CANmodule->rxFilter == NULL){
+        return CO_ERROR_OUT_OF_MEMORY;
+    }
 
     for(i=0U; i<rxSize; i++){
         rxArray[i].ident = 0U;
@@ -185,94 +221,158 @@ CO_ReturnError_t CO_CANmodule_init(
         rxArray[i].pFunct = NULL;
     }
 
-    /* initialize socketCAN filters
-     * CAN module filters will be configured with CO_CANrxBufferInit()
-     * functions, called by separate CANopen init functions */
-    CANmodule->rxFilter = calloc(rxSize, sizeof(struct can_filter));
-    if(CANmodule->rxFilter == NULL){
-        return CO_ERROR_OUT_OF_MEMORY;
-    }
-
-    /* Create socket */
-    CANmodule->fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-    if(CANmodule->fd < 0){
+#ifndef CO_DRIVER_MULTI_INTERFACE
+    /* add one interface */
+    ret = CO_CAN_initSocketCan(CANmodule, CANbaseAddress);
+    if (ret != CO_ERR_NO) {
         CO_CANmodule_disable(CANmodule);
-        return CO_ERROR_SYSCALL;
     }
-
-    /* enable socket rx queue overflow detection */
-    ovfl = 1;
-    ret = setsockopt(CANmodule->fd, SOL_SOCKET, SO_RXQ_OVFL, &ovfl, sizeof(ovfl));
-    if(ret < 0){
-        CO_CANmodule_disable(CANmodule);
-        return CO_ERROR_SYSCALL;
-    }
-
-    //todo modify rx buffer size? first one needs root
-    //ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, (void *)&bytes, sLen);
-    //ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *)&bytes, sLen);
-
-    /* print socket rx buffer size in bytes (In my experience, the kernel reserves
-     * around 450 bytes for each CAN message) */
-    sLen = sizeof(bytes);
-    getsockopt(CANmodule->fd, SOL_SOCKET, SO_RCVBUF, (void *)&bytes, &sLen);
-//    if (sLen == sizeof(bytes)) {
-//        printf("socketCAN rx buffer size: %d bytes\n", bytes);
-//    } todo
-
-    /* bind socket */
-    memset(&sockAddr, 0, sizeof(sockAddr));
-    sockAddr.can_family = AF_CAN;
-    sockAddr.can_ifindex = CANbaseAddress;
-    ret = bind(CANmodule->fd, (struct sockaddr*)&sockAddr, sizeof(sockAddr));
-    if(ret < 0){
-        CO_CANmodule_disable(CANmodule);
-        return CO_ERROR_SYSCALL;
-    }
-
-    /* set up error frame generation. What actually is available depends on your
-     * CAN kernel driver */
-#ifdef DEBUG
-    err_mask = CAN_ERR_MASK; //enable ALL error frames
 #else
-    err_mask = CAN_ERR_ACK | CAN_ERR_CRTL | CAN_ERR_LOSTARB | CAN_ERR_BUSOFF |
-               CAN_ERR_BUSERROR;
+    ret = CO_ERROR_NO;
 #endif
-    ret = setsockopt(CANmodule->fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &err_mask,
-                     sizeof(err_mask));
-    if(ret < 0){
-        CO_CANmodule_disable(CANmodule);
-        return CO_ERROR_SYSCALL;
-    }
-
-    /* rx is started by calling #CO_CANsetNormalMode() */
-    ret = disableRx(CANmodule);
-
     return ret;
+}
+
+
+/** enable socketCAN *********************************************************/
+#ifndef CO_DRIVER_MULTI_INTERFACE
+static
+#endif
+CO_ReturnError_t CO_CANmodule_addInterface(
+        CO_CANmodule_t         *CANmodule,
+        int32_t                 CANbaseAddress)
+{
+  int32_t ret;
+  int32_t tmp;
+  int32_t bytes;
+  socklen_t sLen;
+  can_err_mask_t err_mask;
+  CO_CANinterface_t *interface;
+  struct sockaddr_can sockAddr;
+  struct epoll_event ev;
+
+  if (CANmodule->CANnormal != false) {
+      /* can't change config now! */
+      return CO_ERROR_INVALID_STATE;
+  }
+
+  /* Add interface to interface list */
+  CANmodule->CANinterfaceCount ++;
+  CANmodule->CANinterfaces = realloc(CANmodule->CANinterfaces,
+      ((CANmodule->CANinterfaceCount) * sizeof(*CANmodule->CANinterfaces)));
+  if (CANmodule->CANinterfaces == NULL) {
+      return CO_ERROR_OUT_OF_MEMORY;
+  }
+  interface = &CANmodule->CANinterfaces[CANmodule->CANinterfaceCount - 1];
+
+  interface->CANbaseAddress = CANbaseAddress;
+
+  /* Create socket */
+  interface->fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+  if(interface->fd < 0){
+      return CO_ERROR_SYSCALL;
+  }
+
+  /* enable socket rx queue overflow detection */
+  tmp = 1;
+  ret = setsockopt(interface->fd, SOL_SOCKET, SO_RXQ_OVFL, &tmp, sizeof(tmp));
+  if(ret < 0){
+      return CO_ERROR_SYSCALL;
+  }
+  /* enable time stamp mode */
+  tmp = 1;
+  ret = setsockopt(interface->fd, SOL_SOCKET, SO_TIMESTAMP, &tmp, sizeof(tmp));
+  if (ret < 0) {
+    return CO_ERROR_SYSCALL;
+  }
+
+  //todo modify rx buffer size? first one needs root
+  //ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, (void *)&bytes, sLen);
+  //ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *)&bytes, sLen);
+
+  /* print socket rx buffer size in bytes (In my experience, the kernel reserves
+   * around 450 bytes for each CAN message) */
+  sLen = sizeof(bytes);
+  getsockopt(interface->fd, SOL_SOCKET, SO_RCVBUF, (void *)&bytes, &sLen);
+  //    if (sLen == sizeof(bytes)) {
+  //        printf("socketCAN rx buffer size: %d bytes\n", bytes);
+  //    } todo
+
+  /* bind socket */
+  memset(&sockAddr, 0, sizeof(sockAddr));
+  sockAddr.can_family = AF_CAN;
+  sockAddr.can_ifindex = CANbaseAddress;
+  ret = bind(interface->fd, (struct sockaddr*)&sockAddr, sizeof(sockAddr));
+  if(ret < 0){
+      return CO_ERROR_SYSCALL;
+  }
+
+  /* set up error frame generation. What actually is available depends on your
+   * CAN kernel driver */
+  #ifdef DEBUG
+  err_mask = CAN_ERR_MASK; //enable ALL error frames
+  #else
+  err_mask = CAN_ERR_ACK | CAN_ERR_CRTL | CAN_ERR_LOSTARB | CAN_ERR_BUSOFF |
+             CAN_ERR_BUSERROR;
+  #endif
+  ret = setsockopt(interface->fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &err_mask,
+                   sizeof(err_mask));
+  if(ret < 0){
+      return CO_ERROR_SYSCALL;
+  }
+
+  /* Add socket to epoll */
+  ev.events = EPOLLIN;
+  ev.data.fd = interface->fd;
+  ret = epoll_ctl(CANmodule->fdEpoll, EPOLL_CTL_ADD, ev.data.fd, &ev);
+  if(ret < 0){
+      return CO_ERROR_SYSCALL;
+  }
+
+  /* rx is started by calling #CO_CANsetNormalMode() */
+  ret = disableRx(CANmodule);
+
+  return ret;
 }
 
 
 /******************************************************************************/
 void CO_CANmodule_disable(CO_CANmodule_t *CANmodule)
 {
+    uint32_t i;
     struct timespec wait;
 
-    /* turn off the module */
     if (CANmodule == NULL) {
         return;
     }
 
-    if (CANmodule->fd >= 0) {
+    /* clear interfaces */
+    for (i = 0; i < CANmodule->CANinterfaceCount; i++) {
+        CO_CANinterface_t *interface = &CANmodule->CANinterfaces[i];
+
+        epoll_ctl(CANmodule->fdEpoll, EPOLL_CTL_DEL, interface->fd, NULL);
+        close(interface->fd);
+        interface->fd = -1;
+    }
+    if (CANmodule->CANinterfaces != NULL) {
+        free(CANmodule->CANinterfaces);
+    }
+    CANmodule->CANinterfaceCount = 0;
+
+    /* cancel rx */
+    if (CANmodule->pipe != NULL) {
         CO_NotifyPipeSend(CANmodule->pipe);
         /* give some time for delivery */
         wait.tv_sec = 0;
         wait.tv_nsec = 50 /* ms */ * 1000000;
         nanosleep(&wait, NULL);
-
-        close(CANmodule->fd);
+        CO_NotifyPipeFree(CANmodule->pipe);
     }
-    CO_NotifyPipeFree(CANmodule->pipe);
-    CANmodule->fd = -1;
+
+    if (CANmodule->fdEpoll >= 0) {
+        close(CANmodule->fdEpoll);
+    }
+    CANmodule->fdEpoll = -1;
 
     if (CANmodule->rxFilter != NULL) {
         free(CANmodule->rxFilter);
@@ -308,6 +408,9 @@ CO_ReturnError_t CO_CANrxBufferInit(
         /* Configure object variables */
         buffer->object = object;
         buffer->pFunct = pFunct;
+        buffer->CANbaseAddress = -1;
+        buffer->timestamp.tv_usec = 0;
+        buffer->timestamp.tv_sec = 0;
 
         /* CAN identifier and CAN mask, bit aligned with CAN module */
         buffer->ident = ident & CAN_SFF_MASK;
@@ -332,6 +435,29 @@ CO_ReturnError_t CO_CANrxBufferInit(
 
 
 /******************************************************************************/
+bool_t CO_CANrxBuffer_getInterface(
+        CO_CANmodule_t         *CANmodule,
+        uint32_t                index,
+        int32_t                *CANbaseAddressRx,
+        struct timeval         *timestamp)
+{
+    if((CANmodule!=NULL) && (index < CANmodule->rxSize) && (CANbaseAddressRx >= 0)){
+        CO_CANrx_t *buffer = &CANmodule->rxArray[index];
+
+        /* return values */
+        if (CANbaseAddressRx != NULL) {
+            *CANbaseAddressRx = buffer->CANbaseAddress;
+        }
+        if (timestamp != NULL) {
+            *timestamp = buffer->timestamp;
+        }
+        return true;
+    }
+    return false;
+}
+
+
+/******************************************************************************/
 CO_CANtx_t *CO_CANtxBufferInit(
         CO_CANmodule_t         *CANmodule,
         uint32_t                index,
@@ -345,6 +471,8 @@ CO_CANtx_t *CO_CANtxBufferInit(
     if((CANmodule != NULL) && (index < CANmodule->txSize)){
         /* get specific buffer */
         buffer = &CANmodule->txArray[index];
+
+        buffer->CANbaseAddress = -1;
 
         /* CAN identifier and rtr */
         buffer->ident = ident & CAN_SFF_MASK;
@@ -361,36 +489,40 @@ CO_CANtx_t *CO_CANtxBufferInit(
 
 
 /******************************************************************************/
-CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
+CO_ReturnError_t CO_CANtxBuffer_setInterface(
+        CO_CANmodule_t         *CANmodule,
+        uint32_t                index,
+        int32_t                 CANbaseAddressRx)
 {
-    CO_ReturnError_t err;
-    err = CO_CANCheckSend(CANmodule, buffer);
-    if (err == CO_ERROR_TX_BUSY) {
-        /* send doesn't have "busy" */
-#ifdef USE_EMERGENCY_OBJECT
-        CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
-#endif
-        err = CO_ERROR_TX_OVERFLOW;
+    if((CANmodule != NULL) && (index < CANmodule->txSize)) {
+        /* get specific buffer */
+        CO_CANtx_t *buffer = &CANmodule->txArray[index];
+
+        buffer->CANbaseAddress = CANbaseAddressRx;
+        return CO_ERROR_NO;
     }
-    return err;
+    return CO_ERROR_PARAMETERS;
 }
 
 
 /******************************************************************************/
-CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
+static CO_ReturnError_t CO_CANCheckSendInterface(
+        CO_CANmodule_t         *CANmodule,
+        CO_CANtx_t             *buffer,
+        CO_CANinterface_t      *interface)
 {
     CO_ReturnError_t err = CO_ERROR_NO;
     ssize_t n;
     size_t count;
 
-    if (CANmodule==NULL || CANmodule->fd < 0) {
+    if (CANmodule==NULL || interface==NULL || interface->fd < 0) {
         return CO_ERROR_PARAMETERS;
     }
 
-    count = sizeof(struct can_frame);
+    count = CAN_MTU;
     do {
         errno = 0;
-        n = send(CANmodule->fd, buffer, count, MSG_DONTWAIT);
+        n = send(interface->fd, buffer, count, MSG_DONTWAIT);
         if (errno==EINTR) {
             /* try again */
             continue;
@@ -420,6 +552,50 @@ CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
 
 
 /******************************************************************************/
+CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
+{
+    CO_ReturnError_t err;
+    err = CO_CANCheckSend(CANmodule, buffer);
+    if (err == CO_ERROR_TX_BUSY) {
+        /* send doesn't have "busy" */
+#ifdef USE_EMERGENCY_OBJECT
+        CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
+#endif
+        err = CO_ERROR_TX_OVERFLOW;
+    }
+    return err;
+}
+
+
+/******************************************************************************/
+CO_ReturnError_t CO_CANCheckSend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
+{
+    uint32_t i;
+    CO_ReturnError_t err = CO_ERROR_NO;
+
+    /* check on which interfaces to send this messages */
+    for (i = 0; i < CANmodule->CANinterfaceCount; i++) {
+        CO_CANinterface_t *interface = &CANmodule->CANinterfaces[i];
+
+        if (buffer->CANbaseAddress < 0 ||
+            buffer->CANbaseAddress == interface->CANbaseAddress) {
+
+            CO_ReturnError_t tmp;
+
+            /* match, use this one */
+            tmp = CO_CANCheckSendInterface(CANmodule, buffer, interface);
+            if (tmp) {
+                /* only last error is returned to callee */
+                err = tmp;
+            }
+        }
+    }
+
+    return err;
+}
+
+
+/******************************************************************************/
 void CO_CANclearPendingSyncPDOs(CO_CANmodule_t *CANmodule)
 {
     /* Messages are either written to the socket queue or dropped */
@@ -437,8 +613,10 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule)
 
 /******************************************************************************/
 static CO_ReturnError_t CO_CANread(
-        CO_CANmodule_t *CANmodule,
-        struct can_frame *msg)
+        CO_CANmodule_t         *CANmodule,
+        int                     fd,
+        struct can_frame       *msg,
+        struct timeval         *timestamp)
 {
     int32_t n;
     uint32_t dropped;
@@ -446,7 +624,7 @@ static CO_ReturnError_t CO_CANread(
      * example in berlios candump.c */
     struct iovec iov;
     struct msghdr msghdr;
-    char ctrlmsg[CMSG_SPACE(sizeof(dropped))];
+    char ctrlmsg[CMSG_SPACE(sizeof(struct timeval)) + CMSG_SPACE(sizeof(dropped))];
     struct cmsghdr *cmsg;
 
     iov.iov_base = msg;
@@ -460,8 +638,8 @@ static CO_ReturnError_t CO_CANread(
     msghdr.msg_controllen = sizeof(ctrlmsg);
     msghdr.msg_flags = 0;
 
-    n = recvmsg(CANmodule->fd, &msghdr, 0);
-    if (n <= 0) {
+    n = recvmsg(fd, &msghdr, 0);
+    if (n != CAN_MTU) {
 #ifdef USE_EMERGENCY_OBJECT
         CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_RXB_OVERFLOW,
                        CO_EMC_CAN_OVERRUN, n);
@@ -469,19 +647,24 @@ static CO_ReturnError_t CO_CANread(
         return CO_ERROR_SYSCALL;
     }
 
-    /* check for rx queue overflow */
-    cmsg = CMSG_FIRSTHDR(&msghdr);
-    if ((cmsg != NULL) && (cmsg->cmsg_level == SOL_SOCKET) &&
-        (cmsg->cmsg_type == SO_RXQ_OVFL))
-    {
-        dropped = *(uint32_t*)CMSG_DATA(cmsg);
-        if (dropped > CANmodule->rxDropCount) {
-#ifdef USE_EMERGENCY_OBJECT
-            CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_RXB_OVERFLOW,
-                           CO_EMC_COMMUNICATION, 0);
-#endif
+    /* check for rx queue overflow, get rx time */
+    for (cmsg = CMSG_FIRSTHDR(&msghdr);
+         cmsg && (cmsg->cmsg_level == SOL_SOCKET);
+         cmsg = CMSG_NXTHDR(&msghdr, cmsg)) {
+        if (cmsg->cmsg_type == SO_TIMESTAMP) {
+            *timestamp = *(struct timeval *)CMSG_DATA(cmsg);
         }
-        CANmodule->rxDropCount = dropped;
+        else if (cmsg->cmsg_type == SO_RXQ_OVFL) {
+            dropped = *(uint32_t*)CMSG_DATA(cmsg);
+            if (dropped > CANmodule->rxDropCount) {
+#ifdef USE_EMERGENCY_OBJECT
+                CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_RXB_OVERFLOW,
+                               CO_EMC_COMMUNICATION, 0);
+#endif
+            }
+            CANmodule->rxDropCount = dropped;
+            //todo etwas mit dieser info machen...
+        }
     }
 
     return CO_ERROR_NO;
@@ -491,61 +674,68 @@ static CO_ReturnError_t CO_CANread(
 int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, int fdTimer, CO_CANrxMsg_t *buffer)
 {
     int32_t retval;
-    int fd[4] = {-1, -1, -1, -1};
-    int fdArraySize = sizeof(fd) / sizeof(fd[0]);
-    int fdMax;
-    int i;
-    fd_set set;
+    int32_t ret;
+    int32_t CANbaseAddress;
     CO_ReturnError_t err;
+    struct epoll_event ev[1];
     struct can_frame msg;
+    struct timeval timestamp;
 
-    if (CANmodule==NULL || CANmodule->fd<0) {
+    if (CANmodule==NULL || CANmodule->CANinterfaceCount==0) {
         return -1;
     }
 
-    /*
-     * blocking read using select
-     */
-    fd[0] = CO_NotifyPipeGetFd(CANmodule->pipe);
-    fd[1] = fdTimer;
-    fd[2] = CANmodule->fd;
-    fdMax = -1;
-    for (i = 0; i < fdArraySize; i ++) {
-        if (fdMax < fd[i]) {
-            fdMax = fd[i];
+    if (fdTimer>=0 && fdTimer!=CANmodule->fdTimerRead) {
+        /* new timer, timer changed */
+        epoll_ctl(CANmodule->fdEpoll, EPOLL_CTL_DEL, CANmodule->fdTimerRead, NULL);
+        ev[0].events = EPOLLIN;
+        ev[0].data.fd = fdTimer;
+        ret = epoll_ctl(CANmodule->fdEpoll, EPOLL_CTL_ADD, ev[0].data.fd, &ev[0]);
+        if(ret < 0){
+            return -1;
         }
+        CANmodule->fdTimerRead = fdTimer;
     }
 
+    /*
+     * blocking read using epoll
+     */
     do {
         errno = 0;
-        FD_ZERO(&set);
-        for (i = 0; i < fdArraySize; i++) {
-            if (fd[i] > -1) {
-                FD_SET(fd[i], &set);
-            }
-        }
-        retval = select(fdMax + 1, &set, NULL, NULL, NULL);
-        if (errno==EINTR || errno==EAGAIN) {
+        ret = epoll_wait(CANmodule->fdEpoll, ev, sizeof(ev) / sizeof(ev[0]), -1);
+        if (errno == EINTR) {
             /* try again */
-            continue;
-        }
-        else if (retval < 0) {
-            /* select failed */
+        } else if (ret < 0) {
+            /* epoll failed */
             return -1;
-        }
-        else if (FD_ISSET(fd[0], &set)) {
-            /* pipe socket ready */
+        } else if ((ev[0].events & (EPOLLERR | EPOLLHUP)) != 0) {
+            /* epoll detected close/error on socket. nothing we can do here... */
             return -1;
-        }
-        else if (FD_ISSET(fd[1], &set)) {
-            /* timer socket ready */
-            return -1;
-        }
-        else if (FD_ISSET(fd[2], &set)) {
-            /* CAN socket ready */
-            err = CO_CANread(CANmodule, &msg);
-            if (err != CO_ERROR_NO) {
+        } else if ((ev[0].events & EPOLLIN) != 0) {
+            /* one of the sockets is ready */
+            if ((ev[0].data.fd == CO_NotifyPipeGetFd(CANmodule->pipe)) ||
+                (ev[0].data.fd == fdTimer)) {
+                /* timer/pipe socket */
                 return -1;
+            } else {
+                /* CAN socket */
+                uint32_t i;
+
+                for (i = 0; i < CANmodule->CANinterfaceCount; i ++) {
+                    CO_CANinterface_t *interface = &CANmodule->CANinterfaces[i];
+
+                    if (ev[0].data.fd == interface->fd) {
+                        /* get interface handle */
+                        CANbaseAddress = interface->CANbaseAddress;
+                        /* get message */
+                        err = CO_CANread(CANmodule, interface->fd, &msg, &timestamp);
+                        if (err != CO_ERROR_NO) {
+                            return -1;
+                        }
+                        /* no need to continue search */
+                        break;
+                    }
+                }
             }
         }
     } while (errno != 0);
@@ -557,7 +747,8 @@ int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, int fdTimer, CO_CANrxMsg_t *buff
     if(CANmodule->CANnormal){
 
         if (msg.can_id & CAN_ERR_FLAG) {
-            //todo
+            //todo check include wie emcy.h, dann logging wie cp4100 / nur wenn defined
+            //todo auswerten, reagieren
         } else {
             CO_CANrxMsg_t *rcvMsg;      /* pointer to received message in CAN module */
             uint16_t index;             /* index of received message */
@@ -582,6 +773,10 @@ int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, int fdTimer, CO_CANrxMsg_t *buff
                 rcvMsgObj++;
             }
             if(msgMatched) {
+                /* Store message info */
+                rcvMsgObj->timestamp = timestamp;
+                rcvMsgObj->CANbaseAddress = CANbaseAddress;
+
                 /* Call specific function, which will process the message */
                 if ((rcvMsgObj != NULL) && (rcvMsgObj->pFunct != NULL)){
                     rcvMsgObj->pFunct(rcvMsgObj->object, rcvMsg);
