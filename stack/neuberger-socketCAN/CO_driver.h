@@ -61,6 +61,7 @@ extern "C" {
 #include <sys/time.h>       /* for 'struct timeval' */
 #include <endian.h>
 #include <pthread.h>
+#include <linux/can.h>
 
 #include "CO_notify_pipe.h"
 
@@ -258,6 +259,11 @@ typedef enum{
 
 
 /**
+ * Max COB ID for standard frame format
+ */
+#define CO_CAN_MSG_SFF_MAX_COB_ID (1 << CAN_SFF_ID_BITS)
+
+/**
  * CAN receive message structure as aligned in socketCAN.
  */
 typedef struct{
@@ -278,9 +284,11 @@ typedef struct{
     void               *object;         /**< From CO_CANrxBufferInit() */
     void              (*pFunct)(void *object, const CO_CANrxMsg_t *message);  /**< From CO_CANrxBufferInit() */
 
+#ifdef CO_DRIVER_MULTI_INTERFACE
     /** info about last received message */
     int32_t             CANbaseAddress; /**< CAN Interface identifier */
     struct timeval      timestamp;      /**< time of reception */
+#endif
 }CO_CANrx_t;
 
 
@@ -327,6 +335,13 @@ typedef struct{
     CO_NotifyPipe_t    *pipe;           /**< Notification Pipe */
     int                 fdEpoll;        /**< epoll FD */
     int                 fdTimerRead;    /**< timer handle from CANrxWait() */
+#ifdef CO_DRIVER_MULTI_INTERFACE
+    /**
+     * Lookup tables Cob ID to rx/tx array index. Only feasible for SFF Messages.
+     */
+    uint32_t            rxIdentToIndex[CO_CAN_MSG_SFF_MAX_COB_ID]; /**< COB ID to index assignment */
+    uint32_t            txIdentToIndex[CO_CAN_MSG_SFF_MAX_COB_ID]; /**< COB ID to index assignment */
+#endif
 }CO_CANmodule_t;
 
 
@@ -481,9 +496,9 @@ CO_ReturnError_t CO_CANrxBufferInit(
  * useful as some messages can be received at any time on any bus.
  *
  * @param CANmodule This object.
- * @param index Index of the specific buffer in _rxArray_.
+ * @param ident 11-bit standard CAN Identifier.
  * @param [out] CANbaseAddressRx message was received on this interface
- * @param [out] timestamp message was received at this time (monotonic clock)
+ * @param [out] timestamp message was received at this time (system clock)
  *
  * @retval false message has never been received, therefore no base address
  * and timestamp are available
@@ -491,7 +506,7 @@ CO_ReturnError_t CO_CANrxBufferInit(
  */
 bool_t CO_CANrxBuffer_getInterface(
         CO_CANmodule_t         *CANmodule,
-        uint32_t                index,
+        uint32_t                ident,
         int32_t                *CANbaseAddressRx,
         struct timeval         *timestamp);
 
@@ -534,15 +549,15 @@ CO_CANtx_t *CO_CANtxBufferInit(
  * all available interfaces.
  *
  * @param CANmodule This object.
- * @param index Index of the specific buffer in _txArray_.
- * @param CANbaseAddressRx use this interface. -1 = not specified
+ * @param ident 11-bit standard CAN Identifier.
+ * @param CANbaseAddressTx use this interface. -1 = not specified
  *
  * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
  */
 CO_ReturnError_t CO_CANtxBuffer_setInterface(
         CO_CANmodule_t         *CANmodule,
-        uint32_t                index,
-        int32_t                 CANbaseAddressRx);
+        uint32_t                ident,
+        int32_t                 CANbaseAddressTx);
 
 #endif
 
