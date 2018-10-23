@@ -58,7 +58,7 @@ extern "C" {
 #include <stddef.h>         /* for 'NULL' */
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
-#include <sys/time.h>       /* for 'struct timeval' */
+#include <sys/time.h>       /* for 'struct timespec' */
 #include <endian.h>
 #include <pthread.h>
 #include <linux/can.h>
@@ -287,7 +287,7 @@ typedef struct{
 #ifdef CO_DRIVER_MULTI_INTERFACE
     /** info about last received message */
     int32_t             CANbaseAddress; /**< CAN Interface identifier */
-    struct timeval      timestamp;      /**< time of reception */
+    struct timespec     timestamp;      /**< time of reception */
 #endif
 }CO_CANrx_t;
 
@@ -508,7 +508,7 @@ bool_t CO_CANrxBuffer_getInterface(
         CO_CANmodule_t         *CANmodule,
         uint32_t                ident,
         int32_t                *CANbaseAddressRx,
-        struct timeval         *timestamp);
+        struct timespec        *timestamp);
 
 #endif
 

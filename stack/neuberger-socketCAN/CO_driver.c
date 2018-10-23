@@ -51,6 +51,7 @@
 #include <errno.h>
 #include <linux/can/raw.h>
 #include <linux/can/error.h>
+#include <linux/net_tstamp.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 
@@ -305,7 +306,7 @@ CO_ReturnError_t CO_CANmodule_init(
 #ifdef CO_DRIVER_MULTI_INTERFACE
         rxArray[i].CANbaseAddress = -1;
         rxArray[i].timestamp.tv_sec = 0;
-        rxArray[i].timestamp.tv_usec = 0;
+        rxArray[i].timestamp.tv_nsec = 0;
 #endif
     }
 
@@ -379,12 +380,14 @@ CO_ReturnError_t CO_CANmodule_addInterface(
       return CO_ERROR_SYSCALL;
   }
 #ifdef CO_DRIVER_MULTI_INTERFACE
-  /* enable time stamp mode */
-  tmp = 1;
-  ret = setsockopt(interface->fd, SOL_SOCKET, SO_TIMESTAMP, &tmp, sizeof(tmp));
+  /* enable software time stamp mode (hardware timestamps do not work properly
+   * on all devices)*/
+  tmp = (SOF_TIMESTAMPING_SOFTWARE |
+         SOF_TIMESTAMPING_RX_SOFTWARE);
+  ret = setsockopt(interface->fd, SOL_SOCKET, SO_TIMESTAMPING, &tmp, sizeof(tmp));
   if (ret < 0) {
 #ifdef USE_SYSLOG
-      log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(timestamp)");
+      log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(timestamping)");
 #endif
       return CO_ERROR_SYSCALL;
   }
@@ -550,7 +553,7 @@ CO_ReturnError_t CO_CANrxBufferInit(
             buffer->pFunct = pFunct;
 #ifdef CO_DRIVER_MULTI_INTERFACE
             buffer->CANbaseAddress = -1;
-            buffer->timestamp.tv_usec = 0;
+            buffer->timestamp.tv_nsec = 0;
             buffer->timestamp.tv_sec = 0;
 #endif
 
@@ -583,7 +586,7 @@ bool_t CO_CANrxBuffer_getInterface(
         CO_CANmodule_t         *CANmodule,
         uint32_t                ident,
         int32_t                *CANbaseAddressRx,
-        struct timeval         *timestamp)
+        struct timespec        *timestamp)
 {
     if (CANmodule != NULL){
         uint32_t index;
@@ -792,7 +795,7 @@ static CO_ReturnError_t CO_CANread(
         CO_CANmodule_t         *CANmodule,
         int                     fd,
         struct can_frame       *msg,
-        struct timeval         *timestamp)
+        struct timespec        *timestamp)
 {
     int32_t n;
     uint32_t dropped;
@@ -831,9 +834,9 @@ static CO_ReturnError_t CO_CANread(
     for (cmsg = CMSG_FIRSTHDR(&msghdr);
          cmsg && (cmsg->cmsg_level == SOL_SOCKET);
          cmsg = CMSG_NXTHDR(&msghdr, cmsg)) {
-        if (cmsg->cmsg_type == SO_TIMESTAMP) {
+        if (cmsg->cmsg_type == SO_TIMESTAMPING) {
             /* this is system time, not monotonic time! */
-            *timestamp = *(struct timeval *)CMSG_DATA(cmsg);
+            *timestamp = ((struct timespec*)CMSG_DATA(cmsg))[0];
         }
         else if (cmsg->cmsg_type == SO_RXQ_OVFL) {
             dropped = *(uint32_t*)CMSG_DATA(cmsg);
@@ -926,7 +929,7 @@ int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, int fdTimer, CO_CANrxMsg_t *buff
     CO_CANinterface_t *interface = NULL;
     struct epoll_event ev[1];
     struct can_frame msg;
-    struct timeval timestamp;
+    struct timespec timestamp;
 
     if (CANmodule==NULL || CANmodule->CANinterfaceCount==0) {
         return -1;
