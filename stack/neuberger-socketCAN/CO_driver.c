@@ -57,10 +57,10 @@
 
 #include "CO_driver.h"
 
-#if __has_include("syslog/log.h")
+#if defined CO_DRIVER_ERROR_REPORTING && __has_include("syslog/log.h")
   #include "syslog/log.h"
   #include "msgs.h"
-  #define USE_SYSLOG
+  #define USE_ERROR_REPORTING
 #endif
 
 #if __has_include("CO_Emergency.h")
@@ -138,7 +138,7 @@ static CO_ReturnError_t disableRx(CO_CANmodule_t *CANmodule)
         ret = setsockopt(CANmodule->CANinterfaces[i].fd, SOL_CAN_RAW, CAN_RAW_FILTER,
                          NULL, 0);
         if(ret < 0){
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
             log_printf(LOG_ERR, CAN_FILTER_FAILED,
                        CANmodule->CANinterfaces[i].CANbaseAddress);
             log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt()");
@@ -183,7 +183,7 @@ static CO_ReturnError_t setRxFilters(CO_CANmodule_t *CANmodule)
       ret = setsockopt(CANmodule->CANinterfaces[i].fd, SOL_CAN_RAW, CAN_RAW_FILTER,
                        rxFiltersCpy, sizeof(struct can_filter) * count);
       if(ret < 0){
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
           log_printf(LOG_ERR, CAN_FILTER_FAILED,
                      CANmodule->CANinterfaces[i].CANbaseAddress);
           log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt()");
@@ -242,7 +242,7 @@ CO_ReturnError_t CO_CANmodule_init(
     /* Create epoll FD */
     CANmodule->fdEpoll = epoll_create(1);
     if(CANmodule->fdEpoll < 0){
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
         log_printf(LOG_DEBUG, DBG_ERRNO, "epoll_create()");
 #endif
         CO_CANmodule_disable(CANmodule);
@@ -252,7 +252,7 @@ CO_ReturnError_t CO_CANmodule_init(
     /* Create notification pipe */
     CANmodule->pipe = CO_NotifyPipeCreate();
     if (CANmodule->pipe==NULL) {
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
         log_printf(LOG_DEBUG, DBG_ERRNO, "pipe");
 #endif
         CO_CANmodule_disable(CANmodule);
@@ -263,7 +263,7 @@ CO_ReturnError_t CO_CANmodule_init(
     ev.data.fd = CO_NotifyPipeGetFd(CANmodule->pipe);
     ret = epoll_ctl(CANmodule->fdEpoll, EPOLL_CTL_ADD, ev.data.fd, &ev);
     if(ret < 0){
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
         log_printf(LOG_DEBUG, DBG_ERRNO, "epoll_ctl(pipe)");
 #endif
         CO_CANmodule_disable(CANmodule);
@@ -292,7 +292,7 @@ CO_ReturnError_t CO_CANmodule_init(
      * functions, called by separate CANopen init functions */
     CANmodule->rxFilter = calloc(CANmodule->rxSize, sizeof(struct can_filter));
     if(CANmodule->rxFilter == NULL){
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
         log_printf(LOG_DEBUG, DBG_ERRNO, "malloc()");
 #endif
         return CO_ERROR_OUT_OF_MEMORY;
@@ -352,7 +352,7 @@ CO_ReturnError_t CO_CANmodule_addInterface(
   CANmodule->CANinterfaces = realloc(CANmodule->CANinterfaces,
       ((CANmodule->CANinterfaceCount) * sizeof(*CANmodule->CANinterfaces)));
   if (CANmodule->CANinterfaces == NULL) {
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
       log_printf(LOG_DEBUG, DBG_ERRNO, "malloc()");
 #endif
       return CO_ERROR_OUT_OF_MEMORY;
@@ -364,7 +364,7 @@ CO_ReturnError_t CO_CANmodule_addInterface(
   /* Create socket */
   interface->fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
   if(interface->fd < 0){
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
       log_printf(LOG_DEBUG, DBG_ERRNO, "socket(can)");
 #endif
       return CO_ERROR_SYSCALL;
@@ -374,7 +374,7 @@ CO_ReturnError_t CO_CANmodule_addInterface(
   tmp = 1;
   ret = setsockopt(interface->fd, SOL_SOCKET, SO_RXQ_OVFL, &tmp, sizeof(tmp));
   if(ret < 0){
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
       log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(ovfl)");
 #endif
       return CO_ERROR_SYSCALL;
@@ -386,7 +386,7 @@ CO_ReturnError_t CO_CANmodule_addInterface(
          SOF_TIMESTAMPING_RX_SOFTWARE);
   ret = setsockopt(interface->fd, SOL_SOCKET, SO_TIMESTAMPING, &tmp, sizeof(tmp));
   if (ret < 0) {
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
       log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(timestamping)");
 #endif
       return CO_ERROR_SYSCALL;
@@ -402,7 +402,7 @@ CO_ReturnError_t CO_CANmodule_addInterface(
   sLen = sizeof(bytes);
   getsockopt(interface->fd, SOL_SOCKET, SO_RCVBUF, (void *)&bytes, &sLen);
   if (sLen == sizeof(bytes)) {
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
       log_printf(LOG_INFO, CAN_SOCKET_BUF_SIZE, interface->CANbaseAddress,
                  bytes / 446, bytes);
 #endif
@@ -414,7 +414,7 @@ CO_ReturnError_t CO_CANmodule_addInterface(
   sockAddr.can_ifindex = CANbaseAddress;
   ret = bind(interface->fd, (struct sockaddr*)&sockAddr, sizeof(sockAddr));
   if(ret < 0){
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
       log_printf(LOG_ERR, CAN_BINDING_FAILED, interface->CANbaseAddress);
       log_printf(LOG_DEBUG, DBG_ERRNO, "bind()");
 #endif
@@ -432,7 +432,7 @@ CO_ReturnError_t CO_CANmodule_addInterface(
   ret = setsockopt(interface->fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &err_mask,
                    sizeof(err_mask));
   if(ret < 0){
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
       log_printf(LOG_ERR, CAN_ERROR_FILTER_FAILED, interface->CANbaseAddress);
       log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(can err)");
 #endif
@@ -445,7 +445,7 @@ CO_ReturnError_t CO_CANmodule_addInterface(
   ev.data.fd = interface->fd;
   ret = epoll_ctl(CANmodule->fdEpoll, EPOLL_CTL_ADD, ev.data.fd, &ev);
   if(ret < 0){
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
       log_printf(LOG_DEBUG, DBG_ERRNO, "epoll_ctl(can)");
 #endif
       return CO_ERROR_SYSCALL;
@@ -532,7 +532,7 @@ CO_ReturnError_t CO_CANrxBufferInit(
             buffer = &CANmodule->rxArray[i];
 
             if (i!=index && ident>0 && ident==buffer->ident) {
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
                 log_printf(LOG_DEBUG, DBG_CAN_RX_PARAM_FAILED, "duplicate entry");
 #endif
                 ret = CO_ERROR_ILLEGAL_ARGUMENT;
@@ -715,7 +715,7 @@ static CO_ReturnError_t CO_CANCheckSendInterface(
 #ifdef USE_EMERGENCY_OBJECT
         CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
 #endif
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
         log_printf(LOG_ERR, DBG_CAN_TX_FAILED, buffer->ident, interface->CANbaseAddress);
         log_printf(LOG_DEBUG, DBG_ERRNO, "send()");
 #endif
@@ -736,7 +736,7 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
 #ifdef USE_EMERGENCY_OBJECT
         CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
 #endif
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
         log_printf(LOG_ERR, DBG_CAN_TX_FAILED, buffer->ident, 0);
         log_printf(LOG_DEBUG, DBG_ERRNO, "send()");
 #endif
@@ -823,7 +823,7 @@ static CO_ReturnError_t CO_CANread(
         CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_RXB_OVERFLOW,
                        CO_EMC_CAN_OVERRUN, n);
 #endif
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
         log_printf(LOG_DEBUG, DBG_CAN_RX_FAILED);
         log_printf(LOG_DEBUG, DBG_ERRNO, "recvmsg()");
 #endif
@@ -845,7 +845,7 @@ static CO_ReturnError_t CO_CANread(
                 CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_RXB_OVERFLOW,
                                CO_EMC_COMMUNICATION, 0);
 #endif
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
                 log_printf(LOG_ERR, CAN_RX_SOCKET_QUEUE_OVERFLOW);
 #endif
             }
@@ -864,7 +864,7 @@ static int32_t CO_CANrxError(
         CO_CANinterface_t     *interface)
 {
     //todo use this info!
-#ifdef USE_SYSLOG
+#ifdef USE_ERROR_REPORTING
     /* Log full error message to debug log, even if analysis is done
      * further on. */
     log_printf(LOG_DEBUG, DBG_CAN_ERROR_GENERAL,
