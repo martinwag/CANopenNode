@@ -58,8 +58,10 @@ extern "C" {
 #include <stddef.h>         /* for 'NULL' */
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
+#include <sys/time.h>       /* for 'struct timespec' */
 #include <endian.h>
 #include <pthread.h>
+#include <linux/can.h>
 
 #include "CO_notify_pipe.h"
 
@@ -251,9 +253,15 @@ typedef enum{
     CO_ERROR_DATA_CORRUPT       = -14,  /**< Stored data are corrupt */
     CO_ERROR_CRC                = -15,  /**< CRC does not match */
     CO_ERROR_WRONG_NMT_STATE    = -16,  /**< Command can't be processed in current state */
-    CO_ERROR_SYSCALL            = -17   /**< Syscall failed */
+    CO_ERROR_SYSCALL            = -17,  /**< Syscall failed */
+    CO_ERROR_INVALID_STATE      = -18   /**< Driver not ready */
 }CO_ReturnError_t;
 
+
+/**
+ * Max COB ID for standard frame format
+ */
+#define CO_CAN_MSG_SFF_MAX_COB_ID (1 << CAN_SFF_ID_BITS)
 
 /**
  * CAN receive message structure as aligned in socketCAN.
@@ -275,6 +283,12 @@ typedef struct{
     uint32_t            mask;           /**< Standard Identifier mask with same alignment as ident */
     void               *object;         /**< From CO_CANrxBufferInit() */
     void              (*pFunct)(void *object, const CO_CANrxMsg_t *message);  /**< From CO_CANrxBufferInit() */
+
+#ifdef CO_DRIVER_MULTI_INTERFACE
+    /** info about last received message */
+    int32_t             CANbaseAddress; /**< CAN Interface identifier */
+    struct timespec     timestamp;      /**< time of reception */
+#endif
 }CO_CANrx_t;
 
 
@@ -290,14 +304,26 @@ typedef struct{
     volatile bool_t     bufferFull;     /**< True if previous message is still in buffer (not used in this driver) */
     /** Synchronous PDO messages has this flag set. It prevents them to be sent outside the synchronous window */
     volatile bool_t     syncFlag;
+
+    /** info about transmit message */
+    int32_t             CANbaseAddress; /**< CAN Interface identifier to use */
 } CO_CANtx_t;
 
+/**
+ * socketCAN interface object
+ */
+typedef struct {
+    int32_t             CANbaseAddress; /**< CAN Interface identifier */
+    int                 fd;             /**< socketCAN file descriptor */
+} CO_CANinterface_t;
 
 /**
  * CAN module object. It may be different in different microcontrollers.
  */
 typedef struct{
-    int32_t             CANbaseAddress; /**< From CO_CANmodule_init() */
+    /** List of can interfaces. From CO_CANmodule_init()/ one per CO_CANmodule_addInterface() call */
+    CO_CANinterface_t  *CANinterfaces;
+    uint32_t            CANinterfaceCount; /** interface count */
     CO_CANrx_t         *rxArray;        /**< From CO_CANmodule_init() */
     uint16_t            rxSize;         /**< From CO_CANmodule_init() */
     struct can_filter  *rxFilter;       /**< socketCAN filter list, one per rx buffer */
@@ -306,8 +332,16 @@ typedef struct{
     uint16_t            txSize;         /**< From CO_CANmodule_init() */
     volatile bool_t     CANnormal;      /**< CAN module is in normal mode */
     void               *em;             /**< Emergency object */
-    int                 fd;
-    CO_NotifyPipe_t     *pipe;
+    CO_NotifyPipe_t    *pipe;           /**< Notification Pipe */
+    int                 fdEpoll;        /**< epoll FD */
+    int                 fdTimerRead;    /**< timer handle from CANrxWait() */
+#ifdef CO_DRIVER_MULTI_INTERFACE
+    /**
+     * Lookup tables Cob ID to rx/tx array index. Only feasible for SFF Messages.
+     */
+    uint32_t            rxIdentToIndex[CO_CAN_MSG_SFF_MAX_COB_ID]; /**< COB ID to index assignment */
+    uint32_t            txIdentToIndex[CO_CAN_MSG_SFF_MAX_COB_ID]; /**< COB ID to index assignment */
+#endif
 }CO_CANmodule_t;
 
 
@@ -326,7 +360,7 @@ typedef struct{
 #endif
 
 /**
- * Request CAN configuration (stopped) mode and *wait* untill it is set.
+ * Request CAN configuration (stopped) mode and *wait* until it is set.
  *
  * @param CANbaseAddress CAN module base address.
  */
@@ -334,13 +368,31 @@ void CO_CANsetConfigurationMode(int32_t CANbaseAddress);
 
 
 /**
- * Request CAN normal (opearational) mode and *wait* untill it is set.
+ * Request CAN normal (opearational) mode and *wait* until it is set.
  *
  * @param CANmodule This object.
  */
 void CO_CANsetNormalMode(CO_CANmodule_t *CANmodule);
 
 
+#ifdef CO_DRIVER_MULTI_INTERFACE
+/**
+ * Initialize CAN module object
+ *
+ * Function must be called in the communication reset section. CAN module must
+ * be in Configuration Mode before.
+ *
+ * @param CANmodule This object will be initialized.
+ * @param CANbaseAddress unused
+ * @param rxArray Array for handling received CAN messages
+ * @param rxSize Size of the above array. Must be equal to number of receiving CAN objects.
+ * @param txArray Array for handling transmitting CAN messages
+ * @param txSize Size of the above array. Must be equal to number of transmitting CAN objects.
+ * @param CANbitRate not supported in this driver. Needs to be set by OS
+ *
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT.
+ */
+#else
 /**
  * Initialize CAN module object and open socketCAN connection.
  *
@@ -355,9 +407,10 @@ void CO_CANsetNormalMode(CO_CANmodule_t *CANmodule);
  * @param txSize Size of the above array. Must be equal to number of transmitting CAN objects.
  * @param CANbitRate not supported in this driver. Needs to be set by OS
  *
- * Return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT or
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT or
  * CO_ERROR_SYSCALL.
  */
+#endif
 CO_ReturnError_t CO_CANmodule_init(
         CO_CANmodule_t         *CANmodule,
         int32_t                 CANbaseAddress,
@@ -367,6 +420,23 @@ CO_ReturnError_t CO_CANmodule_init(
         uint16_t                txSize,
         uint16_t                CANbitRate);
 
+#ifdef CO_DRIVER_MULTI_INTERFACE
+
+/**
+ * Add socketCAN interface to can driver
+ *
+ * Function must be called after CO_CANmodule_init.
+ *
+ * @param CANmodule This object will be initialized.
+ * @param CANbaseAddress CAN module base address.
+ * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT,
+ * CO_ERROR_SYSCALL or CO_ERROR_INVALID_STATE.
+ */
+CO_ReturnError_t CO_CANmodule_addInterface(
+        CO_CANmodule_t         *CANmodule,
+        int32_t                 CANbaseAddress);
+
+#endif
 
 /**
  * Close socketCAN connection. Call at program exit.
@@ -405,7 +475,7 @@ uint16_t CO_CANrxMsg_readIdent(const CO_CANrxMsg_t *rxMsg);
  * @param pFunct Pointer to function, which will be called, if received CAN
  * message matches the identifier. It must be fast function.
  *
- * Return #CO_ReturnError_t: CO_ERROR_NO CO_ERROR_ILLEGAL_ARGUMENT or
+ * @return #CO_ReturnError_t: CO_ERROR_NO CO_ERROR_ILLEGAL_ARGUMENT or
  * CO_ERROR_OUT_OF_MEMORY (not enough masks for configuration).
  */
 CO_ReturnError_t CO_CANrxBufferInit(
@@ -417,6 +487,30 @@ CO_ReturnError_t CO_CANrxBufferInit(
         void                   *object,
         void                  (*pFunct)(void *object, const CO_CANrxMsg_t *message));
 
+#ifdef CO_DRIVER_MULTI_INTERFACE
+
+/**
+ * Check on which interface the last message for one message buffer was received
+ *
+ * It is in the responsibility of the user to check that this information is
+ * useful as some messages can be received at any time on any bus.
+ *
+ * @param CANmodule This object.
+ * @param ident 11-bit standard CAN Identifier.
+ * @param [out] CANbaseAddressRx message was received on this interface
+ * @param [out] timestamp message was received at this time (system clock)
+ *
+ * @retval false message has never been received, therefore no base address
+ * and timestamp are available
+ * @retval true base address and timestamp are valid
+ */
+bool_t CO_CANrxBuffer_getInterface(
+        CO_CANmodule_t         *CANmodule,
+        uint32_t                ident,
+        int32_t                *CANbaseAddressRx,
+        struct timespec        *timestamp);
+
+#endif
 
 /**
  * Configure CAN message transmit buffer.
@@ -443,6 +537,29 @@ CO_CANtx_t *CO_CANtxBufferInit(
         uint8_t                 noOfBytes,
         bool_t                  syncFlag);
 
+#ifdef CO_DRIVER_MULTI_INTERFACE
+
+/**
+ * Set which interface should be used for message buffer transmission
+ *
+ * It is in the responsibility of the user to ensure that the correct interface
+ * is used. Some messages need to be transmitted on all interfaces.
+ *
+ * If given interface is unknown or "-1" is used, a message is transmitted on
+ * all available interfaces.
+ *
+ * @param CANmodule This object.
+ * @param ident 11-bit standard CAN Identifier.
+ * @param CANbaseAddressTx use this interface. -1 = not specified
+ *
+ * @return #CO_ReturnError_t: CO_ERROR_NO or CO_ERROR_ILLEGAL_ARGUMENT.
+ */
+CO_ReturnError_t CO_CANtxBuffer_setInterface(
+        CO_CANmodule_t         *CANmodule,
+        uint32_t                ident,
+        int32_t                 CANbaseAddressTx);
+
+#endif
 
 /**
  * Send CAN message.

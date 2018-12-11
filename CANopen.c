@@ -88,7 +88,7 @@
             || CO_NO_SYNC                                 != 1     \
             || CO_NO_EMERGENCY                            != 1     \
             || CO_NO_SDO_SERVER                           == 0     \
-            || (CO_NO_SDO_CLIENT != 0 && CO_NO_SDO_CLIENT != 1)    \
+            || CO_NO_SDO_CLIENT                           > 128    \
             || (CO_NO_RPDO < 1 || CO_NO_RPDO > 0x200)              \
             || (CO_NO_TPDO < 1 || CO_NO_TPDO > 0x200)              \
             || ODL_consumerHeartbeatTime_arrayLength      == 0     \
@@ -160,8 +160,8 @@
 #if CO_DAISY_PRODUCER == 1
     static CO_DaisyProducer_t   CO0_DaisyProducer;
 #endif
-#if CO_NO_SDO_CLIENT == 1
-    static CO_SDOclient_t       COO_SDOclient;
+#if CO_NO_SDO_CLIENT != 0
+    static CO_SDOclient_t       COO_SDOclient[CO_NO_SDO_CLIENT];
 #endif
 #if CO_NO_TRACE > 0
     static CO_trace_t           COO_trace[CO_NO_TRACE];
@@ -175,7 +175,12 @@
 #if CO_NO_NMT_MASTER == 1
     CO_CANtx_t *NMTM_txBuff = 0;
 
-    CO_ReturnError_t CO_sendNMTcommand(CO_t *CO, uint8_t command, uint8_t nodeID){
+    static CO_ReturnError_t CO_sendNMTcommandInternal(
+            CO_t      *CO,
+            uint8_t    command,
+            uint8_t    nodeID,
+            bool_t     ignoreBcst)
+    {
         if(NMTM_txBuff == 0){
             /* error, CO_CANtxBufferInit() was not called for this buffer. */
             return CO_ERROR_TX_UNCONFIGURED; /* -11 */
@@ -184,7 +189,7 @@
         NMTM_txBuff->data[1] = nodeID;
 
         /* Apply NMT command also to this node, if set so. */
-        if(nodeID == 0 || nodeID == CO->NMT->nodeId){
+        if((nodeID == 0 && ignoreBcst == 0) || nodeID == CO->NMT->nodeId){
             switch(command){
                 case CO_NMT_ENTER_OPERATIONAL:
                     if((*CO->NMT->emPr->errorRegister) == 0) {
@@ -207,6 +212,22 @@
         }
 
         return CO_CANsend(CO->CANmodule[0], NMTM_txBuff); /* 0 = success */
+    }
+
+    CO_ReturnError_t CO_sendNMTcommand(
+            CO_t      *CO,
+            uint8_t    command,
+            uint8_t    nodeID)
+    {
+        return CO_sendNMTcommandInternal(CO, command, nodeID, 0);
+    }
+
+    CO_ReturnError_t CO_sendNMTcommandMaster(
+            CO_t      *CO,
+            uint8_t    command,
+            uint8_t    nodeID)
+    {
+        return CO_sendNMTcommandInternal(CO, command, nodeID, 1);
     }
 #endif
 
@@ -232,7 +253,7 @@ CO_ReturnError_t CO_new(void)
         return CO_ERROR_PARAMETERS;
     }
 
-    #if CO_NO_SDO_CLIENT == 1
+    #if CO_NO_SDO_CLIENT != 0
     if(sizeof(OD_SDOClientParameter_t) != sizeof(CO_SDOclientPar_t)){
         return CO_ERROR_PARAMETERS;
     }
@@ -271,8 +292,10 @@ CO_ReturnError_t CO_new(void)
 #if CO_DAISY_PRODUCER == 1
     CO->DaisyProducer                   = &CO0_DaisyProducer;
 #endif
-  #if CO_NO_SDO_CLIENT == 1
-    CO->SDOclient                       = &COO_SDOclient;
+  #if CO_NO_SDO_CLIENT != 0
+    for(i=0; i<CO_NO_SDO_CLIENT; i++) {
+      CO->SDOclient[i]                  = &COO_SDOclient[i];
+    }
   #endif
   #if CO_NO_TRACE > 0
     for(i=0; i<CO_NO_TRACE; i++) {
@@ -316,8 +339,10 @@ CO_ReturnError_t CO_new(void)
       #if CO_DAISY_PRODUCER == 1
         CO->DaisyProducer                   = (CO_DaisyProducer_t *)calloc(1, sizeof(CO_DaisyProducer_t));
       #endif
-      #if CO_NO_SDO_CLIENT == 1
-        CO->SDOclient                       = (CO_SDOclient_t *)    calloc(1, sizeof(CO_SDOclient_t));
+      #if CO_NO_SDO_CLIENT != 0
+        for(i=0; i<CO_NO_SDO_CLIENT; i++){
+            CO->SDOclient[i]                = (CO_SDOclient_t *)    calloc(1, sizeof(CO_SDOclient_t));
+        }
       #endif
       #if CO_NO_TRACE > 0
         for(i=0; i<CO_NO_TRACE; i++) {
@@ -358,8 +383,8 @@ CO_ReturnError_t CO_new(void)
   #if CO_DAISY_PRODUCER == 1
                   + sizeof(CO_DaisyConsumer_t)
   #endif
-  #if CO_NO_SDO_CLIENT == 1
-                  + sizeof(CO_SDOclient_t)
+  #if CO_NO_SDO_CLIENT != 0
+                  + sizeof(CO_SDOclient_t) * CO_NO_SDO_CLIENT
   #endif
                   + 0;
   #if CO_NO_TRACE > 0
@@ -401,8 +426,10 @@ CO_ReturnError_t CO_new(void)
   #if CO_DAISY_PRODUCER == 1
     if(CO->DaisyProducer                == NULL) errCnt++;
   #endif
-  #if CO_NO_SDO_CLIENT == 1
-    if(CO->SDOclient                    == NULL) errCnt++;
+  #if CO_NO_SDO_CLIENT != 0
+    for(i=0; i<CO_NO_SDO_CLIENT; i++){
+        if(CO->SDOclient[i]             == NULL) errCnt++;
+    }
   #endif
   #if CO_NO_TRACE > 0
     for(i=0; i<CO_NO_TRACE; i++) {
@@ -668,17 +695,22 @@ CO_ReturnError_t CO_CANopenInit(
     if(err){return err;}
 
 
-#if CO_NO_SDO_CLIENT == 1
-    err = CO_SDOclient_init(
-            CO->SDOclient,
-            CO->SDO[0],
-            (CO_SDOclientPar_t*) &OD_SDOClientParameter[0],
-            CO->CANmodule[0],
-            CO_RXCAN_SDO_CLI,
-            CO->CANmodule[0],
-            CO_TXCAN_SDO_CLI);
+#if CO_NO_SDO_CLIENT != 0
 
-    if(err){return err;}
+    for(i=0; i<CO_NO_SDO_CLIENT; i++){
+
+        err = CO_SDOclient_init(
+                CO->SDOclient[i],
+                CO->SDO[0],
+                (CO_SDOclientPar_t*) &OD_SDOClientParameter[i],
+                CO->CANmodule[0],
+                CO_RXCAN_SDO_CLI+i,
+                CO->CANmodule[0],
+                CO_TXCAN_SDO_CLI+i);
+
+        if(err){return err;}
+
+    }
 #endif
 
 
@@ -755,7 +787,9 @@ void CO_delete(int32_t CANbaseAddress){
       }
   #endif
   #if CO_NO_SDO_CLIENT == 1
-    free(CO->SDOclient);
+      for(i=0; i<CO_NO_SDO_CLIENT; i++) {
+          free(CO->SDOclient[i]);
+      }
   #endif
   #if CO_NO_LSS_SERVER == 1
     free(CO->LSSslave);

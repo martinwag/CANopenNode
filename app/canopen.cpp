@@ -541,7 +541,7 @@ CO_SDO_abortCode_t Canopen::daisychain_callback(CO_ODF_arg_t *p_odf_arg)
       }
       break;
     case OD_2112_2_daisyChain_shiftOut:
-      if (*(reinterpret_cast<tBoolean*>(p_odf_arg->data)) == TRUE) {
+      if ((static_cast<tBoolean>(*p_odf_arg->data)) == TRUE) {
         daisy_shift_so();
       }
       break;
