@@ -1473,7 +1473,8 @@ void Canopen::lss_nid_assignment(u8* p_pending_nid)
   while (true) {
     CO_LSSslave_process(CO->LSSslave, this->active_bit, *this->p_active_nid,
                         &dummy, p_pending_nid);
-    if (*p_pending_nid != CO_LSS_NODE_ID_ASSIGNMENT) {
+    if ((*p_pending_nid != CO_LSS_NODE_ID_ASSIGNMENT) &&
+        (CO_LSSslave_getState(CO->LSSslave) == CO_LSS_STATE_WAITING)) {
       log_printf(LOG_NOTICE, NOTE_LSS, *p_pending_nid);
       return;
     }
