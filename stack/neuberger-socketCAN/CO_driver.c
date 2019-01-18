@@ -934,8 +934,11 @@ int32_t CO_CANrxWait(CO_CANmodule_t *CANmodule, int fdTimer, CO_CANrxMsg_t *buff
             return -1;
         }
         else if ((ev[0].events & (EPOLLERR | EPOLLHUP)) != 0) {
-            /* epoll detected close/error on socket. nothing we can do here... */
-            return -1;
+            /* epoll detected close/error on socket. Try to pull event */
+            errno = 0;
+            recv(ev[0].data.fd, &msg, sizeof(msg), MSG_DONTWAIT);
+            log_printf(LOG_DEBUG, DBG_CAN_RX_EPOLL, ev[0].events, strerror(errno));
+            continue;
         }
         else if ((ev[0].events & EPOLLIN) != 0) {
             /* one of the sockets is ready */
