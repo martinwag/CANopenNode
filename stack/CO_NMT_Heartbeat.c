@@ -70,9 +70,7 @@ static void CO_NMT_receive(void *object, const CO_CANrxMsg_t *msg){
 
         switch(command){
             case CO_NMT_ENTER_OPERATIONAL:
-                if((*NMT->emPr->errorRegister) == 0U){
-                    NMT->operatingState = CO_NMT_OPERATIONAL;
-                }
+                NMT->operatingState = CO_NMT_OPERATIONAL;
                 break;
             case CO_NMT_ENTER_STOPPED:
                 NMT->operatingState = CO_NMT_STOPPED;
