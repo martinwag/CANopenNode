@@ -51,6 +51,14 @@ class Canopen_errors {
       INIT_INTERNAL,                          //!< anderer Initialisierungsfehler
       HARDWARE,                               //!< Externe Hardware
       INTERNAL,                               //!< Software/Controllerperipherie
+      BUS0_VOLT_HIGH,                         //!< Bus 0 voltage too high
+      BUS0_VOLT_LOW,                          //!< Bus 0 voltage too low
+      BUS1_VOLT_HIGH,                         //!< Bus 1 voltage too high
+      BUS1_VOLT_LOW,                          //!< Bus 1 voltage too low
+      BUS2_VOLT_HIGH,                         //!< Bus 2 voltage too high
+      BUS2_VOLT_LOW,                          //!< Bus 2 voltage too low
+      BUS3_VOLT_HIGH,                         //!< Bus 3 voltage too high
+      BUS3_VOLT_LOW,                          //!< Bus 3 voltage too low
 
       END = ODL_errorStatusBits_stringLength * 8 - 1 //!< Letzter verf"ugbarer Wert
     } errorcode_t;
