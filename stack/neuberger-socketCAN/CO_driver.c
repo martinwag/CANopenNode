@@ -666,13 +666,16 @@ static CO_ReturnError_t CO_CANCheckSendInterface(
         CO_CANinterface_t      *interface)
 {
     CO_ReturnError_t err = CO_ERROR_NO;
+#ifdef CO_DRIVER_ERROR_REPORTING
     CO_CANinterfaceState_t ifState;
+#endif
     ssize_t n;
 
     if (CANmodule==NULL || interface==NULL || interface->fd < 0) {
         return CO_ERROR_PARAMETERS;
     }
 
+#ifdef CO_DRIVER_ERROR_REPORTING
     ifState = CO_CANerror_txMsg(&interface->errorhandler);
     switch (ifState) {
         case CO_INTERFACE_ACTIVE:
@@ -684,6 +687,7 @@ static CO_ReturnError_t CO_CANCheckSendInterface(
         default:
             return CO_ERROR_INVALID_STATE;
     }
+#endif
 
     do {
         errno = 0;
