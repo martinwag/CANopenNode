@@ -202,7 +202,7 @@ static inline void CO_UNLOCK_OD()   { (void)pthread_mutex_unlock(&CO_OD_mutex); 
  * @{
  */
 /** Memory barrier */
-#define CANrxMemoryBarrier()
+#define CANrxMemoryBarrier() {__sync_synchronize();}
 /** Check if new message has arrived */
 #define IS_CANrxNew(rxNew) ((int)rxNew)
 /** Set new message flag */
