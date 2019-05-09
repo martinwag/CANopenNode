@@ -54,6 +54,32 @@
 extern "C" {
 #endif
 
+
+/**
+ * @name multi interface support
+ *
+ * Enable this to use interface combining at driver level. This
+ * adds functions to broadcast/selective transmit messages on the
+ * given interfaces as well as combining all received message into
+ * one queue.
+ */
+//#define CO_DRIVER_MULTI_INTERFACE
+
+/**
+ * @name CAN bus error reporting
+ *
+ * Enable this to add support for socketCAN error detection- and
+ * handling functions inside the driver. This is needed when you have
+ * CANopen with "0" connected nodes as a use case, as this is normally
+ * forbidden in CAN.
+ *
+ * you need to enable error reporting in your kernel driver using
+ * "ip link set canX type can berr-reporting on". Of course, the kernel
+ * driver for your hardware needs this functionallity to be implemented...
+ */
+//#define CO_DRIVER_ERROR_REPORTING
+
+
 #include "CO_driver_base.h"
 #include "CO_notify_pipe.h"
 

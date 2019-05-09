@@ -68,6 +68,24 @@ typedef enum {
     CO_INTERFACE_BUS_OFF              /**< CAN bus off */
 } CO_CANinterfaceState_t;
 
+
+/**
+ * This is how many NO-ACKs need to be received in a row to assume
+ * that no other nodes are connected to a bus and therefore are
+ * assuming listen-only
+ */
+#define CO_CANerror_NOACK_MAX 16
+
+
+/**
+ * This is how long we are going to block transmission if listen-only
+ * mode is active
+ *
+ * Time is in seconds.
+ */
+#define CO_CANerror_LISTEN_ONLY 10
+
+
 /**
  * socketCAN interface error handling
  */
@@ -75,7 +93,7 @@ typedef struct {
   int                 fd;             /**< interface FD */
   const char         *ifName;         /**< interface name as string */
 
-  uint32_t            noackCounter; //todo wie Fehler z"ahlen??
+  uint32_t            noackCounter;
 
   volatile bool_t     listenOnly;     /**< set to listen only mode */
   struct timespec     timestamp;      /**< listen only mode started at this time */

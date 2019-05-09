@@ -320,123 +320,121 @@ CO_ReturnError_t CO_CANmodule_addInterface(
         CO_CANmodule_t         *CANmodule,
         int32_t                 CANbaseAddress)
 {
-  int32_t ret;
-  int32_t tmp;
-  int32_t bytes;
-  char *ifName;
-  socklen_t sLen;
-  CO_CANinterface_t *interface;
-  struct sockaddr_can sockAddr;
-  struct epoll_event ev;
+    int32_t ret;
+    int32_t tmp;
+    int32_t bytes;
+    char *ifName;
+    socklen_t sLen;
+    CO_CANinterface_t *interface;
+    struct sockaddr_can sockAddr;
+    struct epoll_event ev;
 #ifdef CO_DRIVER_ERROR_REPORTING
-  can_err_mask_t err_mask;
+    can_err_mask_t err_mask;
 #endif
 
-  if (CANmodule->CANnormal != false) {
-      /* can't change config now! */
-      return CO_ERROR_INVALID_STATE;
-  }
+    if (CANmodule->CANnormal != false) {
+        /* can't change config now! */
+        return CO_ERROR_INVALID_STATE;
+    }
 
-  /* Add interface to interface list */
-  CANmodule->CANinterfaceCount ++;
-  CANmodule->CANinterfaces = realloc(CANmodule->CANinterfaces,
-      ((CANmodule->CANinterfaceCount) * sizeof(*CANmodule->CANinterfaces)));
-  if (CANmodule->CANinterfaces == NULL) {
-      log_printf(LOG_DEBUG, DBG_ERRNO, "malloc()");
-      return CO_ERROR_OUT_OF_MEMORY;
-  }
-  interface = &CANmodule->CANinterfaces[CANmodule->CANinterfaceCount - 1];
+    /* Add interface to interface list */
+    CANmodule->CANinterfaceCount ++;
+    CANmodule->CANinterfaces = realloc(CANmodule->CANinterfaces,
+        ((CANmodule->CANinterfaceCount) * sizeof(*CANmodule->CANinterfaces)));
+    if (CANmodule->CANinterfaces == NULL) {
+        log_printf(LOG_DEBUG, DBG_ERRNO, "malloc()");
+        return CO_ERROR_OUT_OF_MEMORY;
+    }
+    interface = &CANmodule->CANinterfaces[CANmodule->CANinterfaceCount - 1];
 
-  interface->CANbaseAddress = CANbaseAddress;
-  ifName = if_indextoname(CANbaseAddress, interface->ifName);
-  if (ifName == NULL) {
-      log_printf(LOG_DEBUG, DBG_ERRNO, "if_indextoname()");
-      return CO_ERROR_ILLEGAL_ARGUMENT;
-  }
+    interface->CANbaseAddress = CANbaseAddress;
+    ifName = if_indextoname(CANbaseAddress, interface->ifName);
+    if (ifName == NULL) {
+        log_printf(LOG_DEBUG, DBG_ERRNO, "if_indextoname()");
+        return CO_ERROR_ILLEGAL_ARGUMENT;
+    }
 
-  /* Create socket */
-  interface->fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-  if(interface->fd < 0){
-      log_printf(LOG_DEBUG, DBG_ERRNO, "socket(can)");
-      return CO_ERROR_SYSCALL;
-  }
+    /* Create socket */
+    interface->fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+    if(interface->fd < 0){
+        log_printf(LOG_DEBUG, DBG_ERRNO, "socket(can)");
+        return CO_ERROR_SYSCALL;
+    }
 
-  /* enable socket rx queue overflow detection */
-  tmp = 1;
-  ret = setsockopt(interface->fd, SOL_SOCKET, SO_RXQ_OVFL, &tmp, sizeof(tmp));
-  if(ret < 0){
-      log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(ovfl)");
-      return CO_ERROR_SYSCALL;
-  }
+    /* enable socket rx queue overflow detection */
+    tmp = 1;
+    ret = setsockopt(interface->fd, SOL_SOCKET, SO_RXQ_OVFL, &tmp, sizeof(tmp));
+    if(ret < 0){
+        log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(ovfl)");
+        return CO_ERROR_SYSCALL;
+    }
 #ifdef CO_DRIVER_MULTI_INTERFACE
-  /* enable software time stamp mode (hardware timestamps do not work properly
-   * on all devices)*/
-  tmp = (SOF_TIMESTAMPING_SOFTWARE |
-         SOF_TIMESTAMPING_RX_SOFTWARE);
-  ret = setsockopt(interface->fd, SOL_SOCKET, SO_TIMESTAMPING, &tmp, sizeof(tmp));
-  if (ret < 0) {
-      log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(timestamping)");
-      return CO_ERROR_SYSCALL;
-  }
+    /* enable software time stamp mode (hardware timestamps do not work properly
+     * on all devices)*/
+    tmp = (SOF_TIMESTAMPING_SOFTWARE |
+           SOF_TIMESTAMPING_RX_SOFTWARE);
+    ret = setsockopt(interface->fd, SOL_SOCKET, SO_TIMESTAMPING, &tmp, sizeof(tmp));
+    if (ret < 0) {
+        log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(timestamping)");
+        return CO_ERROR_SYSCALL;
+    }
 #endif
 
-  //todo disable socket loopback
+    //todo - modify rx buffer size? first one needs root
+    //ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, (void *)&bytes, sLen);
+    //ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *)&bytes, sLen);
 
-  //todo modify rx buffer size? first one needs root
-  //ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, (void *)&bytes, sLen);
-  //ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *)&bytes, sLen);
+    /* print socket rx buffer size in bytes (In my experience, the kernel reserves
+     * around 450 bytes for each CAN message) */
+    sLen = sizeof(bytes);
+    getsockopt(interface->fd, SOL_SOCKET, SO_RCVBUF, (void *)&bytes, &sLen);
+    if (sLen == sizeof(bytes)) {
+        log_printf(LOG_INFO, CAN_SOCKET_BUF_SIZE, interface->ifName,
+                   bytes / 446, bytes);
+    }
 
-  /* print socket rx buffer size in bytes (In my experience, the kernel reserves
-   * around 450 bytes for each CAN message) */
-  sLen = sizeof(bytes);
-  getsockopt(interface->fd, SOL_SOCKET, SO_RCVBUF, (void *)&bytes, &sLen);
-  if (sLen == sizeof(bytes)) {
-      log_printf(LOG_INFO, CAN_SOCKET_BUF_SIZE, interface->ifName,
-                 bytes / 446, bytes);
-  }
+    /* bind socket */
+    memset(&sockAddr, 0, sizeof(sockAddr));
+    sockAddr.can_family = AF_CAN;
+    sockAddr.can_ifindex = CANbaseAddress;
+    ret = bind(interface->fd, (struct sockaddr*)&sockAddr, sizeof(sockAddr));
+    if(ret < 0){
+        log_printf(LOG_ERR, CAN_BINDING_FAILED, interface->ifName);
+        log_printf(LOG_DEBUG, DBG_ERRNO, "bind()");
+        return CO_ERROR_SYSCALL;
+    }
 
-  /* bind socket */
-  memset(&sockAddr, 0, sizeof(sockAddr));
-  sockAddr.can_family = AF_CAN;
-  sockAddr.can_ifindex = CANbaseAddress;
-  ret = bind(interface->fd, (struct sockaddr*)&sockAddr, sizeof(sockAddr));
-  if(ret < 0){
-      log_printf(LOG_ERR, CAN_BINDING_FAILED, interface->ifName);
-      log_printf(LOG_DEBUG, DBG_ERRNO, "bind()");
-      return CO_ERROR_SYSCALL;
-  }
-
-#ifdef CO_DRIVER_ERROR_REPORTING //todo wollen wir das in co_error verlagern?
-  CO_CANerror_init(&interface->errorhandler, interface->fd, interface->ifName);
-  /* set up error frame generation. What actually is available depends on your
-   * CAN kernel driver */
+#ifdef CO_DRIVER_ERROR_REPORTING
+    CO_CANerror_init(&interface->errorhandler, interface->fd, interface->ifName);
+    /* set up error frame generation. What actually is available depends on your
+     * CAN kernel driver */
 #ifdef DEBUG
-  err_mask = CAN_ERR_MASK; //enable ALL error frames
+    err_mask = CAN_ERR_MASK; //enable ALL error frames
 #else
-  err_mask = CAN_ERR_ACK | CAN_ERR_CRTL | CAN_ERR_BUSOFF | CAN_ERR_BUSERROR;
+    err_mask = CAN_ERR_ACK | CAN_ERR_CRTL | CAN_ERR_BUSOFF | CAN_ERR_BUSERROR;
 #endif
-  ret = setsockopt(interface->fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &err_mask,
-                   sizeof(err_mask));
-  if(ret < 0){
-      log_printf(LOG_ERR, CAN_ERROR_FILTER_FAILED, interface->ifName);
-      log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(can err)");
-      return CO_ERROR_SYSCALL;
-  }
+    ret = setsockopt(interface->fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &err_mask,
+                     sizeof(err_mask));
+    if(ret < 0){
+        log_printf(LOG_ERR, CAN_ERROR_FILTER_FAILED, interface->ifName);
+        log_printf(LOG_DEBUG, DBG_ERRNO, "setsockopt(can err)");
+        return CO_ERROR_SYSCALL;
+    }
 #endif
 
-  /* Add socket to epoll */
-  ev.events = EPOLLIN;
-  ev.data.fd = interface->fd;
-  ret = epoll_ctl(CANmodule->fdEpoll, EPOLL_CTL_ADD, ev.data.fd, &ev);
-  if(ret < 0){
-      log_printf(LOG_DEBUG, DBG_ERRNO, "epoll_ctl(can)");
-      return CO_ERROR_SYSCALL;
-  }
+    /* Add socket to epoll */
+    ev.events = EPOLLIN;
+    ev.data.fd = interface->fd;
+    ret = epoll_ctl(CANmodule->fdEpoll, EPOLL_CTL_ADD, ev.data.fd, &ev);
+    if(ret < 0){
+        log_printf(LOG_DEBUG, DBG_ERRNO, "epoll_ctl(can)");
+        return CO_ERROR_SYSCALL;
+    }
 
-  /* rx is started by calling #CO_CANsetNormalMode() */
-  ret = disableRx(CANmodule);
+    /* rx is started by calling #CO_CANsetNormalMode() */
+    ret = disableRx(CANmodule);
 
-  return ret;
+    return ret;
 }
 
 

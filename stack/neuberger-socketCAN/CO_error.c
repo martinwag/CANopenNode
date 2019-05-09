@@ -45,7 +45,7 @@
 
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h> //todo entfernen
+#include <stdio.h>
 #include <linux/can/error.h>
 
 #include "CO_error.h"
@@ -62,41 +62,27 @@
 /**
  * Reset CAN interface and set to listen only mode
  */
-static CO_CANinterfaceState_t CO_CANerrorResetIf(
-        CO_CANinterfaceErrorhandler_t     *CANerrorhandler)
+static CO_CANinterfaceState_t CO_CANerrorSetListenOnly(
+        CO_CANinterfaceErrorhandler_t     *CANerrorhandler,
+        bool_t                             resetIf)
 {
-  char command[100];
+    char command[100];
 
-  clock_gettime(CLOCK_MONOTONIC, &CANerrorhandler->timestamp);
-  CANerrorhandler->listenOnly = true;
+    log_printf(LOG_DEBUG, DBG_CAN_SET_LISTEN_ONLY, CANerrorhandler->ifName);
 
-  snprintf(command, sizeof(command), "ip link set %s down", CANerrorhandler->ifName);
+    clock_gettime(CLOCK_MONOTONIC, &CANerrorhandler->timestamp);
+    CANerrorhandler->listenOnly = true;
 
-  log_printf(LOG_ERR, command);
-  system(command);
+    if (resetIf) {
+        snprintf(command, sizeof(command), "ip link set %s down && "
+                                           "ip link set %s up "
+                                           "&",
+                                           CANerrorhandler->ifName,
+                                           CANerrorhandler->ifName);
+        system(command);
+    }
 
-  struct timespec t;
-  t.tv_sec = 0;
-  t.tv_nsec = (1) * 1000000;
-//  nanosleep(&t, NULL);
-
-  struct can_frame dummy;
-  log_printf(LOG_ERR, "start dropping msg on %s", CANerrorhandler->ifName);
-  int i = 0;
-  while (recv(CANerrorhandler->fd, &dummy, sizeof(dummy), MSG_DONTWAIT) > 0) {
-    //log_printf(LOG_ERR, "dropping msg on %s", CANerrorhandler->ifName);
-    i++;
-  }
-  log_printf(LOG_ERR, "end dropping msg %d on %s", i, CANerrorhandler->ifName);
-
-  snprintf(command, sizeof(command), "ip link set %s up", CANerrorhandler->ifName);
-
-  log_printf(LOG_ERR, command);
-  system(command);
-
-  log_printf(LOG_ERR, "finished %s", CANerrorhandler->ifName);
-
-  return CO_INTERFACE_LISTEN_ONLY; //todo if down/up
+    return CO_INTERFACE_LISTEN_ONLY;
 }
 
 
@@ -106,6 +92,8 @@ static CO_CANinterfaceState_t CO_CANerrorResetIf(
 static void CO_CANerrorClearListenOnly(
         CO_CANinterfaceErrorhandler_t     *CANerrorhandler)
 {
+    log_printf(LOG_DEBUG, DBG_CAN_CLR_LISTEN_ONLY, CANerrorhandler->ifName);
+
     CANerrorhandler->listenOnly = false;
     CANerrorhandler->timestamp.tv_sec = 0;
     CANerrorhandler->timestamp.tv_nsec = 0;
@@ -122,15 +110,14 @@ static CO_CANinterfaceState_t CO_CANerrorBusoff(
     CO_CANinterfaceState_t result = CO_INTERFACE_ACTIVE;
 
     if ((msg->can_id & CAN_ERR_BUSOFF) != 0) {
+        log_printf(LOG_NOTICE, CAN_BUSOFF, CANerrorhandler->ifName);
+
         /* The can interface changed it's state to "bus off" (e.g. because of
          * a short on the can wires). We re-start the interface and mark it
          * "listen only".
          * Restarting the interface is the only way to clear kernel and hardware
          * tx queues */
-
-        log_printf(LOG_NOTICE, CAN_BUSOFF, CANerrorhandler->ifName);
-
-        result = CO_CANerrorResetIf(CANerrorhandler);
+        result = CO_CANerrorSetListenOnly(CANerrorhandler, true);
     }
     return result;
 }
@@ -187,23 +174,26 @@ static CO_CANinterfaceState_t CO_CANerrorNoack(
 {
     CO_CANinterfaceState_t result = CO_INTERFACE_ACTIVE;
 
+    if (CANerrorhandler->listenOnly == true) {
+        return CO_INTERFACE_LISTEN_ONLY;
+    }
+
     /* received no ACK on transmission */
     if ((msg->can_id & CAN_ERR_ACK) != 0) {
         CANerrorhandler->noackCounter ++;
-        if (CANerrorhandler->noackCounter > 10) { //todo schwelle wohin?
-            /* We get the no ACK error continuously when no other CAN node
-             * is active on the bus.
-             * Restarting the interface is the only way to clear kernel and hardware
-             * tx queues */
-            log_printf(LOG_NOTICE, CAN_NOACK, CANerrorhandler->ifName);
+        if (CANerrorhandler->noackCounter > CO_CANerror_NOACK_MAX) {
+            log_printf(LOG_INFO, CAN_NOACK, CANerrorhandler->ifName);
 
-            result = CO_CANerrorResetIf(CANerrorhandler);
-
-            CANerrorhandler->noackCounter = 0; //todo wo "0"?
+            /* We get the NO-ACK error continuously when no other CAN node
+             * is active on the bus (Error Counting exception 1 in CAN spec).
+             * todo - you need to pull the message causing no-ack from the CAN
+             * hardware buffer. This can be done by either resetting interface
+             * in here (set "true") or deleting it within Linux Kernel can driver. */
+            result = CO_CANerrorSetListenOnly(CANerrorhandler, false);
         }
     }
     else {
-        CANerrorhandler->noackCounter = 0; //todo wo "0"?
+        CANerrorhandler->noackCounter = 0;
     }
     return result;
 }
@@ -253,6 +243,7 @@ void CO_CANerror_rxMsg(
     if (CANerrorhandler->listenOnly == true) {
         CO_CANerrorClearListenOnly(CANerrorhandler);
     }
+    CANerrorhandler->noackCounter = 0;
 }
 
 
@@ -268,11 +259,11 @@ CO_CANinterfaceState_t CO_CANerror_txMsg(
 
     if (CANerrorhandler->listenOnly == true) {
         clock_gettime(CLOCK_MONOTONIC, &now);
-        if (CANerrorhandler->timestamp.tv_sec + 5 < now.tv_sec) { //todo retry timer wohin?
+        if (CANerrorhandler->timestamp.tv_sec + CO_CANerror_LISTEN_ONLY < now.tv_sec) {
             /* let's try that again. Maybe someone is waiting for LSS now. It
-             * doesn't matter which message is sent, as all messages are ACKed */
+             * doesn't matter which message is sent, as all messages are ACKed. */
             CO_CANerrorClearListenOnly(CANerrorhandler);
-            return CO_INTERFACE_ACTIVE; //todo wenn das von hier aus nicht klappt sollten wir nicht 50 no-acks abwarten
+            return CO_INTERFACE_ACTIVE;
         }
         return CO_INTERFACE_LISTEN_ONLY;
     }
