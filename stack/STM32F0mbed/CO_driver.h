@@ -215,6 +215,8 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule);
 
 
 /* Receives and transmits CAN messages. */
+void CO_CAN_RX_InterruptHandler(void);
+void CO_CAN_TX_InterruptHandler(void);
 void CO_CANinterrupt_RX(CO_CANmodule_t *CANmodule);
 void CO_CANinterrupt_TX(CO_CANmodule_t *CANmodule);
 

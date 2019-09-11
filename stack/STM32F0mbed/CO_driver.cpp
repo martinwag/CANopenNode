@@ -55,6 +55,7 @@ extern "C" {
 
 CANbus CANport0(MBED_CAN_RX, MBED_CAN_TX); //local cpp variable
 CANbus *CANport = NULL; //external pointer to CANPort0
+CO_CANmodule_t* _CANmodule = NULL;
 
 EventQueue* printfQueue = NULL;    // event queue for async printf of received frames
 
@@ -144,6 +145,7 @@ CO_ReturnError_t CO_CANmodule_init(
     CANmodule->CANtxCount = 0U;
     CANmodule->errOld = 0U;
     CANmodule->em = NULL;
+    _CANmodule = CANmodule;
 
     for(i=0U; i<rxSize; i++){
         rxArray[i].ident = 0U;
@@ -166,7 +168,7 @@ CO_ReturnError_t CO_CANmodule_init(
         return CO_ERROR_PARAMETERS;
     }
 
-    CANport->mode(CAN::Normal); // CAN::LocalTest | CAN::Normal
+    CANport->mode(CAN::Normal); // CAN::LocalTest | CAN::Normal | CAN::Silent
 
     // Configure CAN module hardware filters 
     if(CANmodule->useCANrxFilters){
@@ -186,12 +188,17 @@ CO_ReturnError_t CO_CANmodule_init(
 
     // configure CAN interrupt registers 
 
+    // Configure CAN transmit and receive interrupt 
+    CANport->attach(&CO_CAN_RX_InterruptHandler, CAN::RxIrq);
+    CANport->attach(&CO_CAN_TX_InterruptHandler, CAN::TxIrq);
+
     return CO_ERROR_NO;
 }
 
 
 //****************************************************************************
 void CO_CANreset(void) {
+    _CANmodule->CANnormal = false;
     CANport->reset();
 }
 
@@ -199,7 +206,8 @@ void CO_CANreset(void) {
 
 //****************************************************************************
 void CO_CANmodule_disable(CO_CANmodule_t *CANmodule){
-    // turn off the module 
+    CANmodule->CANnormal = false;
+    // turn off the module ... (put to sleep?)
 }
 
 
@@ -420,6 +428,14 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule){
 
 
 //****************************************************************************
+void CO_CAN_RX_InterruptHandler(void) {
+    CO_CANinterrupt_RX(_CANmodule);
+}
+
+void CO_CAN_TX_InterruptHandler(void) {
+    CO_CANinterrupt_TX(_CANmodule);
+}
+
 void CO_CANinterrupt_RX(CO_CANmodule_t *CANmodule){
     CO_CANrxMsg_t rcvMsgBuf;    // buffer for the received message in CAN module 
     CO_CANrxMsg_t *rcvMsg;      // pointer to received message in CAN module 
