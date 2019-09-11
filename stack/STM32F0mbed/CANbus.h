@@ -12,6 +12,7 @@ public:
     bool rxOverrunFlagSet();
 
     int read_Nonblocking(mbed::CANMessage &msg, int handle = 0);
+    int write_Nonblocking(mbed::CANMessage &msg);
 
 };
 

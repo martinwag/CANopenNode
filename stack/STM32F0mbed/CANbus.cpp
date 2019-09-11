@@ -30,3 +30,8 @@ int CANbus::read_Nonblocking(mbed::CANMessage &msg, int handle)
 {
     return can_read(&_can, &msg, handle);
 }
+
+int CANbus::write_Nonblocking(mbed::CANMessage &msg)
+{
+    return can_write(&_can, msg, 0);
+}

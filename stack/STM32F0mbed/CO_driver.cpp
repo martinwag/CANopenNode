@@ -509,7 +509,7 @@ void CO_CANinterrupt_TX(CO_CANmodule_t *CANmodule){
                 CANmodule->bufferInhibitFlag = buffer->syncFlag;
                 // canSend... 
                 CANMessage msg = toCANMessage(buffer);
-                CANport->write(msg);
+                CANport->write_Nonblocking(msg);
                 printfQueue->call(printCANMessage, msg, TX);
                 break;                      // exit for loop 
             }
