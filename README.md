@@ -184,6 +184,7 @@ Microcontroller support
 | Microchip PIC24, 33 (MPLABX)  | stable (2015) | no         | [CANopenPIC](https://github.com/CANopenNode/CANopenPIC) |
 | Microchip dsPIC30F (MPLABX)   | beta   (2013) | no         | [CANopenPIC](https://github.com/CANopenNode/CANopenPIC) |
 | LPC1768 (MBED)                | beta   (2016) | no         | [exmachina](https://github.com/exmachina-dev/CANopenMbed) |
+| ST STM32 F091RC               | beta   (2019) | no         | [Alphatronics](https://github.com/Alphatronics/mbed-os-example-canopen) |
 | RTOS eCos                     | stable (2013) | Yes        | [old repo](http://sourceforge.net/p/canopennode/code_complete/) |
 | Atmel SAM3X                   | ?             | Yes        | [old repo](http://sourceforge.net/p/canopennode/code_complete/) |
 | ST STM32                      | ?             | no         | [old repo](http://sourceforge.net/p/canopennode/code_complete/) |
