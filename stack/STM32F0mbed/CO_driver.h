@@ -56,15 +56,27 @@
 #include <stdbool.h>        /* for 'true', 'false' */
 
 
-/* Critical sections */
-//#define CO_LOCK_CAN_SEND()
-//#define CO_UNLOCK_CAN_SEND()
-
+/* Critical sections: empty implementations => no locking provided */
+#define CO_LOCK_CAN_SEND()
+#define CO_UNLOCK_CAN_SEND()
 #define CO_LOCK_EMCY()
 #define CO_UNLOCK_EMCY()
-
 #define CO_LOCK_OD()
 #define CO_UNLOCK_OD()
+
+/** @name Syncronisation functions
+ * syncronisation for message buffer for communication between CAN receive and
+ * message processing threads.
+ * If receive function runs inside IRQ, no further synchronsiation is needed.
+ * */
+/** Memory barrier */
+#define CANrxMemoryBarrier()
+/** Check if new message has arrived */
+#define IS_CANrxNew(rxNew) ((int)rxNew)
+/** Set new message flag */
+#define SET_CANrxNew(rxNew) {CANrxMemoryBarrier(); rxNew = (void*)1L;}
+/** Clear new message flag */
+#define CLEAR_CANrxNew(rxNew) {CANrxMemoryBarrier(); rxNew = (void*)0L;}
 
 
 /* Data types */
@@ -205,6 +217,8 @@ void CO_CANverifyErrors(CO_CANmodule_t *CANmodule);
 /* Receives and transmits CAN messages. */
 void CO_CANinterrupt_RX(CO_CANmodule_t *CANmodule);
 void CO_CANinterrupt_TX(CO_CANmodule_t *CANmodule);
+
+void CO_CANreset(void);
 
 
 #endif

@@ -56,6 +56,16 @@ extern "C" {
 CANbus CANport0(MBED_CAN_RX, MBED_CAN_TX); //local cpp variable
 CANbus *CANport = NULL; //external pointer to CANPort0
 
+EventQueue* printfQueue = NULL;    // event queue for async printf of received frames
+
+
+enum CANCmdDirection {
+    TX = 0,
+    RX = 1
+};
+typedef enum CANCmdDirection CANCmdDirection;
+
+
 
 // helper functions 
 
@@ -79,6 +89,17 @@ void fromCANMessage(CANMessage *msg, CO_CANrxMsg_t *CO_msg) {
     memcpy(CO_msg->data, msg->data, CO_msg->DLC);
 }
 
+
+static void printCANMessage(mbed::CANMessage& msg, CANCmdDirection isTx)
+{
+    printf("%s:\t%X\t[%d]  ", (isTx == TX ? "TX" : "RX"), msg.id, msg.len);
+    for(int i=0; i<msg.len; i++) {
+        printf("%02X ", msg.data[i]);
+    }
+    printf("\n");
+}
+
+
 //****************************************************************************
 void CO_CANsetConfigurationMode(int32_t CANbaseAddress){
     // Put CAN module in configuration mode 
@@ -88,10 +109,6 @@ void CO_CANsetConfigurationMode(int32_t CANbaseAddress){
 //****************************************************************************
 void CO_CANsetNormalMode(CO_CANmodule_t *CANmodule){
     // Put CAN module in normal mode 
-    // CANport->mode(CAN::Reset);
-
-    // can_mode(LPC_CAN2->, CAN::Normal);
-    // LPC_IOCON->PIO0_4 = PIN_INPUT P
     CANmodule->CANnormal = true;
 }
 
@@ -121,7 +138,7 @@ CO_ReturnError_t CO_CANmodule_init(
     CANmodule->txArray = txArray;
     CANmodule->txSize = txSize;
     CANmodule->CANnormal = false;
-    CANmodule->useCANrxFilters = false; //(rxSize <= 32U) ? true : false;// microcontroller dependent 
+    CANmodule->useCANrxFilters = false;
     CANmodule->bufferInhibitFlag = false;
     CANmodule->firstCANtxMessage = true;
     CANmodule->CANtxCount = 0U;
@@ -139,8 +156,8 @@ CO_ReturnError_t CO_CANmodule_init(
 
     // Configure CAN module registers 
     CANport = &CANport0;
-    // CANport->reset();
 
+    printfQueue = mbed_event_queue();    
 
     // Configure CAN timing 
     int CANbaudRate = CANbitRate * 1000;
@@ -149,6 +166,7 @@ CO_ReturnError_t CO_CANmodule_init(
         return CO_ERROR_PARAMETERS;
     }
 
+    CANport->mode(CAN::Normal); // CAN::LocalTest | CAN::Normal
 
     // Configure CAN module hardware filters 
     if(CANmodule->useCANrxFilters){
@@ -162,15 +180,21 @@ CO_ReturnError_t CO_CANmodule_init(
         // CAN module filters are not used, all messages with standard 11-bit 
         // identifier will be received 
         // Configure mask 0 so, that all messages with standard identifier are accepted 
-        // CANport->filter(0, 0, CANAny);
+        CANport->filter(0, 0, CANAny);
     }
 
 
     // configure CAN interrupt registers 
 
-
     return CO_ERROR_NO;
 }
+
+
+//****************************************************************************
+void CO_CANreset(void) {
+    CANport->reset();
+}
+
 
 
 //****************************************************************************
@@ -268,18 +292,21 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer){
             CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, buffer->ident);
         }
         err = CO_ERROR_TX_OVERFLOW;
-        // USBport.printf("BUFF_FULL OVERFLOW\r\n");
+        printf("TX: failed (buff_full overflow)\r\n");
     }
 
     // if CAN TX buffer is free, copy message to it
     int success = -1;
     if (CANmodule->CANtxCount == 0) {
-        success = CANport->write(toCANMessage(buffer));
+        CANMessage msg = toCANMessage(buffer);
+        success = CANport->write(msg);
+        printfQueue->call(printCANMessage, msg, TX);
+        if (success == 1) {
+            printCANMessage(msg, TX);
+            CANmodule->bufferInhibitFlag = buffer->syncFlag;
+        }
     }
-    if (success) {
-        printf("TX: ok\r\n");
-        CANmodule->bufferInhibitFlag = buffer->syncFlag;
-    } else {
+    if (success != 1) {
         printf("TX: failed (buff_full)\r\n");
         buffer->bufferFull = true;
         CANmodule->CANtxCount++;
@@ -293,7 +320,6 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer){
 void CO_CANclearPendingSyncPDOs(CO_CANmodule_t *CANmodule){
     uint32_t tpdoDeleted = 0U;
 
-    //CO_LOCK_CAN_SEND();
     // Abort message from CAN module, if there is synchronous TPDO.
     if(CANmodule->bufferInhibitFlag) {
         // clear transmit mailboxes 
@@ -403,7 +429,7 @@ void CO_CANinterrupt_RX(CO_CANmodule_t *CANmodule){
     bool_t msgMatched = false;
     CANMessage msg;
 
-    CANport->read(msg);
+    CANport->read_Nonblocking(msg);
     fromCANMessage(&msg, &rcvMsgBuf); // get message from module here 
     rcvMsg = &rcvMsgBuf;
     rcvMsgIdent = rcvMsg->ident;
@@ -439,6 +465,7 @@ void CO_CANinterrupt_RX(CO_CANmodule_t *CANmodule){
 
     // Clear interrupt flag 
     // The interrupt flag is cleaned by CANport.read() function call 
+    printfQueue->call(printCANMessage, msg, RX);
 }
 
 
@@ -465,7 +492,9 @@ void CO_CANinterrupt_TX(CO_CANmodule_t *CANmodule){
                 // Copy message to CAN buffer 
                 CANmodule->bufferInhibitFlag = buffer->syncFlag;
                 // canSend... 
-                CANport->write(toCANMessage(buffer));
+                CANMessage msg = toCANMessage(buffer);
+                CANport->write(msg);
+                printfQueue->call(printCANMessage, msg, TX);
                 break;                      // exit for loop 
             }
             buffer++;

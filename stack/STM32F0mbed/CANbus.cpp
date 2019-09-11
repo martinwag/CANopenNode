@@ -25,3 +25,8 @@ bool CANbus::rxOverrunFlagSet()
     bool fifo1 = (bool) __HAL_CAN_GET_FLAG(&_can.CanHandle, CAN_FLAG_FOV1);
     return (fifo0 || fifo1 ? true : false);
 }
+
+int CANbus::read_Nonblocking(mbed::CANMessage &msg, int handle)
+{
+    return can_read(&_can, &msg, handle);
+}

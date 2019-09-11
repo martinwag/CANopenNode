@@ -11,6 +11,8 @@ public:
     void clearSendingMessages();
     bool rxOverrunFlagSet();
 
+    int read_Nonblocking(mbed::CANMessage &msg, int handle = 0);
+
 };
 
 #endif //CO_CANBUS_H
